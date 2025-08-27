@@ -1,0 +1,11 @@
+username: dev_lucas
+key: yUjvftcfA1FWceSFH56nwpNDtZ0ye7oU
+
+
+# Atualizar o banco de dados:
+
+docker-comand: sudo docker compose run --rm api python auto_sinapi/seu_script_principal.py
+
+# Testes:
+
+curl -i -X GET "http://localhost:8000/insumos/search/?q=CIMENTO" -H "X-API-KEY: yUjvftcfA1FWceSFH56nwpNDtZ0ye7oU"

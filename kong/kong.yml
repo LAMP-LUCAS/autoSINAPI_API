@@ -1,23 +1,22 @@
-# kong/kong.yml
+# Arquivo: kong/kong.yml
+
 _format_version: "2.1"
 
 services:
 - name: sinapi-api
-  url: http://api:8000  # Aponta para o serviço da API no Docker
+  url: http://api:8000
   routes:
   - name: sinapi-route
     paths:
     - /
 
-plugins:
-- name: key-auth
-  service: sinapi-api
-  config: 
-    key_names:
-    - X-API-KEY
-- name: rate-limiting
-  service: sinapi-api
-  config:
-    minute: 30
-    day: 250
-    policy: local
+  plugins:
+  - name: key-auth
+    config: 
+      key_names:
+      - X-API-KEY
+  - name: rate-limiting
+    config:
+      minute: 30
+      day: 250
+      policy: local
