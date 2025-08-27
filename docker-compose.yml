@@ -1,0 +1,78 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: sinapi_db
+    hostname: db
+    env_file: .env
+    environment:
+      - POSTGRES_MULTIPLE_DATABASES=sinapi,kong # Cria o DB para a API e para o Kong
+      - KONG_PG_USER=${KONG_DB_USER}
+      - KONG_PG_PASSWORD=${KONG_DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/db/multiple-databases.sh:/docker-entrypoint-initdb.d/multiple-databases.sh # Script para criar múltiplos DBs
+    ports:
+      - "5432:5432" # Exponha apenas se precisar acessar o DB diretamente do seu PC
+    restart: unless-stopped
+    networks:
+      - sinapi-net
+
+  api:
+    container_name: sinapi_api
+    build: .
+    env_file: .env
+    depends_on:
+      - db
+    restart: unless-stopped
+    networks:
+      - sinapi-net
+
+  kong-migrations:
+    image: kong:3.4
+    container_name: kong_migrations
+    env_file: .env
+    environment:
+      - KONG_DATABASE=postgres
+      - KONG_PG_DATABASE=kong # Aponta para o DB do kong
+    command: "kong migrations bootstrap"
+    depends_on:
+      - db
+    restart: on-failure
+    networks:
+      - sinapi-net
+
+  kong:
+    image: kong:3.4
+    container_name: sinapi_gateway
+    env_file: .env
+    environment:
+      - KONG_DATABASE=postgres
+      - KONG_PG_DATABASE=kong
+      - KONG_DECLARATIVE_CONFIG=/usr/local/kong/declarative/kong.yml
+      - KONG_PROXY_ACCESS_LOG=/dev/stdout
+      - KONG_ADMIN_ACCESS_LOG=/dev/stdout
+      - KONG_PROXY_ERROR_LOG=/dev/stderr
+      - KONG_ADMIN_ERROR_LOG=/dev/stderr
+      - KONG_ADMIN_LISTEN=0.0.0.0:8001
+    depends_on:
+      - kong-migrations
+      - api
+    ports:
+      - "8000:8000" # Porta de proxy para acessar a API
+      - "8001:8001" # Porta de administração do Kong
+    volumes:
+      - ./kong:/usr/local/kong/declarative
+    restart: unless-stopped
+    networks:
+      - sinapi-net
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  sinapi-net:
+    driver: bridge
