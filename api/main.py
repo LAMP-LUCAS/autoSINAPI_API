@@ -1,16 +1,48 @@
 # api/main.py
+import os
 from typing import List
 from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from . import crud, schemas
 from .database import get_db
+from .tasks import populate_sinapi_task
 
 app = FastAPI(
     title="AutoSINAPI API",
     description="API para consulta de preços de insumos e composições da base SINAPI.",
     version="1.0.0",
 )
+
+# --- Endpoints de Administração ---
+
+@app.post("/admin/populate-database", status_code=202, tags=["Admin"])
+def trigger_database_population(year: int, month: int):
+    """
+    Dispara a tarefa de download e população da base SINAPI para um mês específico.
+    A tarefa roda em segundo plano. Retorna imediatamente com o ID da tarefa.
+    """
+    # Monta os dicionários de configuração a partir do .env (lido pela API)
+    # Esta é a "fonte única da verdade"
+    db_config = {
+        "user": os.getenv("POSTGRES_USER"),
+        "password": os.getenv("POSTGRES_PASSWORD"),
+        "host": os.getenv("DB_HOST"), # O worker se conecta ao 'db' hostname da rede docker
+        "port": os.getenv("DB_PORT"),
+        "dbname": os.getenv("POSTGRES_DB")
+    }
+    sinapi_config = {
+        "year": year,
+        "month": month,
+        "workbook_type": os.getenv("SINAPI_WORKBOOK_TYPE", "REFERENCIA"),
+        "duplicate_policy": os.getenv("SINAPI_DUPLICATE_POLICY", "substituir")
+    }
+
+    # Envia a tarefa para a fila do Celery
+    task = populate_sinapi_task.delay(db_config, sinapi_config)
+
+    return {"message": "Tarefa de população iniciada.", "task_id": task.id}
+
 
 @app.get("/", tags=["Root"])
 def read_root():

@@ -38,6 +38,25 @@ services:
     networks:
       - sinapi-net
 
+  redis:
+    image: redis:7-alpine
+    container_name: sinapi_redis
+    restart: unless-stopped
+    networks:
+      - sinapi-net
+
+  celery_worker:
+    build: .
+    container_name: sinapi_worker
+    command: celery -A api.tasks.celery_app worker --loglevel=info
+    env_file: .env
+    depends_on:
+      - redis
+      - db
+    restart: unless-stopped
+    networks:
+      - sinapi-net
+
   kong-migrations:
     image: kong:3.4
     container_name: kong_migrations
