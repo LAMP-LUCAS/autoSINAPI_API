@@ -1,249 +1,116 @@
-# AutoSINAPI API
+# 🚀 AutoSINAPI API: Acesso Instantâneo e Estruturado aos Dados da Construção Civil
 
-[](https://opensource.org/licenses/MIT)
-[](https://www.docker.com/)
-[](https://www.python.org/)
+[![Versão](https://img.shields.io/badge/version-alpha1-blue.svg)](https://github.com/LAMP-LUCAS/autoSINAPI_API)
+[![Licença](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)](https://www.docker.com/)
+[![Powered by: FastAPI](https://img.shields.io/badge/Powered%20by-FastAPI-green?logo=fastapi)](https://fastapi.tiangolo.com/)
 
-Um ecossistema open-source completo para transformar os dados públicos do SINAPI (Sistema Nacional de Pesquisa de Custos e Índices da Construção Civil) em uma API de alta performance, robusta, escalável e pronta para monetização através de um sistema de planos (tiers).
+**Transforme horas de trabalho manual com planilhas em milissegundos de resposta de API.** O AutoSINAPI API é um ecossistema completo e open source que resolve o problema crônico de acesso aos dados do SINAPI, servindo informações de insumos e composições de forma rápida, confiável e sempre atualizada.
 
-Este projeto automatiza a coleta, armazenamento e, principalmente, o consumo dos dados de insumos e composições do SINAPI, oferecendo um ponto de acesso centralizado e fácil de integrar para desenvolvedores, engenheiros e empresas do setor de construção.
+---
 
-## Por que usar esta API?
+### 💡 A Dor que Curamos: O Fim das Planilhas Gigantes
 
-O acesso aos dados do SINAPI geralmente envolve baixar planilhas pesadas, tratá-las manualmente e importá-las para um sistema. Este projeto elimina todo esse trabalho, oferecendo:
+Se você é desenvolvedor, orçamentista ou engenheiro no setor AEC (Arquitetura, Engenharia e Construção), você conhece a rotina:
 
-  - **🚀 Economia de Tempo:** Tenha acesso a preços atualizados sem nenhum trabalho manual.
-  - **⚡ Alta Performance:** Respostas rápidas e eficientes, ideal para sistemas que precisam de agilidade.
-  - **🔧 API Developer-Friendly:** Documentação interativa automática (via FastAPI/Swagger) para facilitar a integração.
-  - **📈 Escalabilidade e Controle:** O API Gateway (Kong) gerencia autenticação, segurança e limites de uso, permitindo desde um uso gratuito e limitado até planos empresariais de alto volume.
-  - **📦 Conteinerizado com Docker:** Todo o ambiente (banco de dados, API, gateway) sobe com um único comando, garantindo consistência e facilidade de implantação.
-  - **🌐 100% Open-Source:** Liberdade para usar, modificar e contribuir.
+| ❌ **O Jeito Antigo (e Doloroso)** | ✅ **A Solução AutoSINAPI API** |
+| ---------------------------------------------------------------- | -------------------------------------------------------------- |
+| Baixar arquivos ZIP de dezenas de megabytes todo mês.            | Acesso instantâneo aos dados via uma chamada de API.           |
+| Lidar com planilhas complexas, inconsistentes e de difícil parse. | Respostas em JSON limpo, padronizado e pronto para uso.        |
+| Gastar horas limpando, tratando e importando dados.              | O ETL é nosso problema, não o seu.                             |
+| Manter um banco de dados próprio, complexo e desatualizado.      | Dados sempre atualizados com a última referência da Caixa.     |
+| Processos lentos que travam a inovação e a agilidade.            | Performance para alimentar seus sistemas, dashboards e apps.   |
 
-## Arquitetura do Ecossistema
+**Nosso objetivo é simples: devolver seu tempo e potenciar suas aplicações com dados de qualidade.**
 
-O projeto utiliza uma arquitetura moderna baseada em microserviços, orquestrada pelo Docker Compose:
+---
 
-```
-+----------------+      +---------------------------+      +--------------------+      +-------------------------+
-|                |      |                           |      |                    |      |                         |
-|  Usuário Final |----->|     Kong API Gateway      |----->|   API FastAPI      |----->|   Banco de Dados        |
-|  (Aplicação)   |      |   (Porta 8000)            |      |   (Python)         |      |   PostgreSQL            |
-|                |      | - Autenticação (API Key)  |      | - Lógica de negócio|      | - Dados SINAPI          |
-|                |      | - Rate Limiting (Planos)  |      | - Endpoints        |      | - Dados Kong            |
-|                |      |                           |      |                    |      | - Dados de Usuários     |
-+----------------+      +---------------------------+      +--------------------+      +-------------------------+
-                             ^
-                             | (Admin via Porta 8001)
-                             |
-                      +----------------+
-                      | Administrador  |
-                      | (Criação de    |
-                      |  chaves/planos)|
-                      +----------------+
-```
+### ⚡️ Como Usar: Escolha o Caminho Ideal para Você
 
-## Tecnologias Utilizadas
+Existem duas maneiras de aproveitar o poder do AutoSINAPI API, pensadas para diferentes necessidades.
 
-  - **Backend:** Python 3.10+ com [FastAPI](https://fastapi.tiangolo.com/)
-  - **Banco de Dados:** [PostgreSQL](https://www.postgresql.org/)
-  - **API Gateway:** [Kong](https://konghq.com/kong/)
-  - **Servidor ASGI:** [Uvicorn](https://www.uvicorn.org/)
-  - **Conteinerização:** [Docker](https://www.docker.com/) e [Docker Compose](https://docs.docker.com/compose/)
+#### **Opção 1: Consumir a API Pública (Para Desenvolvedores e Empresas)**
 
-## Estrutura de Diretórios
+A forma mais rápida e fácil de integrar os dados do SINAPI ao seu projeto. Sem se preocupar com infraestrutura, atualizações ou manutenção. Foco total no seu negócio.
 
-```
-/AutoSINAPI/
-├── auto_sinapi/          # Script original para popular o banco de dados
-├── api/                    # Código-fonte da API em FastAPI
-│   ├── main.py
-│   ├── crud.py
-│   ├── schemas.py
-│   └── database.py
-├── kong/                   # Configuração declarativa do Kong
-│   └── kong.yml
-├── .env                    # Arquivo local com suas variáveis de ambiente
-├── .env.example            # Arquivo de exemplo para as variáveis de ambiente
-├── .gitignore
-├── docker-compose.yml      # Orquestrador de todos os serviços
-├── Dockerfile              # Receita para construir a imagem da API
-└── README.md               # Este arquivo
-```
+**Comece a usar em 3 passos:**
+1.  **Obtenha sua Chave de API:** [Cadastre-se aqui!](https://www.mundoaec.com/autoSINAPI_API)
+2.  **Consulte a Documentação Interativa:** Acesse `https://autosinapi.mundoaec.com/docs` para ver todos os endpoints e testá-los ao vivo.
+3.  **Faça sua Primeira Requisição:**
 
------
+    ```bash
+    # Exemplo: Buscando por "CIMENTO"
+    curl -X GET "[https://autosinapi.mundoaec.com/insumos/search/?q=CIMENTO](https://autosinapi.mundoaec.com/insumos/search/?q=CIMENTO)" \
+      -H "X-API-KEY: SUA_CHAVE_API_AQUI"
+    ```
+**Pronto!** Você receberá uma resposta JSON com os dados estruturados, prontos para serem usados em seu sistema.
 
-## Guia de Implementação Rápida
+---
 
-Siga estes passos para ter todo o ecossistema rodando em sua máquina local ou servidor.
+#### **Opção 2: Auto-Hospedagem (Para a Comunidade Open Source e Entusiastas)**
 
-### 1\. Pré-requisitos
+Tenha controle total sobre o ambiente, personalize o código e use sem limites. Ideal para quem quer aprender, contribuir ou precisa de uma solução 100% customizada. Graças ao Docker e ao `Makefile`, a instalação é surpreendentemente simples.
 
-Certifique-se de ter os seguintes softwares instalados:
+**Guia Rápido de Instalação:**
 
-  - [Git](https://git-scm.com/)
-  - [Docker](https://docs.docker.com/engine/install/)
-  - [Docker Compose](https://docs.docker.com/compose/install/) (geralmente já vem com o Docker Desktop)
+1.  **Clone o repositório:**
+    ```bash
+    git clone [https://github.com/LAMP-LUCAS/autoSINAPI_API.git](https://github.com/LAMP-LUCAS/autoSINAPI_API.git)
+    cd autoSINAPI_API
+    ```
 
-### 2\. Clone o Repositório
+2.  **Configure seu ambiente:**
+    Copie o arquivo de exemplo `.env.example` para `.env` e, se necessário, ajuste as senhas. Os padrões já funcionam localmente.
+    ```bash
+    cp .env.example .env
+    ```
 
+3.  **Inicie todos os serviços com um único comando:**
+    Este comando irá construir as imagens, baixar o que for preciso e iniciar o banco de dados, a API, o gateway e todos os componentes em segundo plano.
+    ```bash
+    make up
+    ```
+
+4.  **Popule seu banco de dados:**
+    Execute este comando para acionar o módulo `AutoSINAPI`, que fará o download da referência mais recente da Caixa e a inserirá no seu banco de dados.
+    ```bash
+    make populate-db
+    ```
+
+**Pronto!** Sua API está no ar, acessível em `http://localhost:8000`. Agora você só precisa [gerar sua chave de API local](#-gerenciando-o-ambiente-com-make) e começar a usar.
+
+---
+
+### 🔧 Arquitetura e Tecnologias
+
+Este projeto é um ecossistema de microserviços orquestrado com Docker Compose, garantindo isolamento, escalabilidade e robustez.
+
+* **API Gateway (Kong):** Gerencia toda a autenticação, segurança e limites de uso (rate limiting).
+* **API Backend (FastAPI):** A aplicação principal que serve os endpoints de consulta de dados.
+* **Banco de Dados (PostgreSQL):** Armazena de forma otimizada todos os dados do SINAPI.
+* **Fila de Tarefas (Redis):** Gerencia as tarefas de longa duração, como a população do banco.
+* **Worker (Celery):** O "trabalhador" que executa as tarefas pesadas (usando o módulo `AutoSINAPI`) em segundo plano, sem travar a API.
+* **Toolkit de ETL (AutoSINAPI):** O cérebro por trás da coleta e tratamento dos dados.
+
+---
+
+### 🎛️ Gerenciando o Ambiente com `make`
+
+Para facilitar a vida de quem auto-hospeda, criamos um painel de controle simples via `Makefile`.
+
+| Comando           | Descrição                                                          |
+|-------------------|--------------------------------------------------------------------|
+| `make up`         | Inicia todo o ambiente Docker em segundo plano.                    |
+| `make down`       | Para todos os serviços e remove os contêineres e volumes.           |
+| `make populate-db`| Executa o script de download e inserção dos dados do SINAPI.       |
+| `make logs-api`   | Exibe os logs do contêiner da API em tempo real.                   |
+| `make logs-kong`  | Exibe os logs do contêiner do Kong Gateway.                        |
+| `make status`     | Mostra o status atual de todos os contêineres.                     |
+
+**Para gerar sua chave de API localmente:**
 ```bash
-git clone https://github.com/LAMP-LUCAS/AutoSINAPI.git
-cd AutoSINAPI
-```
+# 1. Crie um "consumidor" (usuário)
+curl -X POST http://localhost:8001/consumers/ --data username=meu-usuario-local
 
-### 3\. Configure o Ambiente
-
-Crie um arquivo `.env` a partir do exemplo. Este arquivo conterá todas as senhas e configurações sensíveis.
-
-```bash
-cp .env.example .env
-```
-
-Agora, **edite o arquivo `.env`** e ajuste as senhas e configurações conforme sua necessidade. Ele será parecido com isto:
-
-```env
-# .env
-
-# === Configs do PostgreSQL ===
-POSTGRES_DB=sinapi
-POSTGRES_USER=admin
-POSTGRES_PASSWORD=sua_senha_forte_aqui
-
-# === Configs do Kong (Gateway) ===
-KONG_DB_USER=kong
-KONG_DB_PASSWORD=outra_senha_forte_aqui
-KONG_PG_HOST=db
-
-# === Configs da API (FastAPI) ===
-# URL de conexão que a API usará para se conectar ao banco de dados.
-# O host 'db' é o nome do serviço do postgres no docker-compose.
-DATABASE_URL=postgresql://admin:sua_senha_forte_aqui@db:5432/sinapi
-```
-
-### 4\. Construa e Inicie os Serviços
-
-O comando a seguir irá construir a imagem da API, baixar as imagens do PostgreSQL e Kong, e iniciar todos os contêineres em segundo plano.
-
-```bash
-docker-compose up --build -d
-```
-
-Aguarde alguns instantes para que todos os serviços iniciem e o banco de dados do Kong seja preparado. Para verificar se tudo está rodando, use `docker-compose ps`.
-
-### 5\. Popule o Banco de Dados (Primeira Vez)
-
-Com os serviços no ar, você precisa rodar seu script original para baixar os dados do SINAPI e inseri-los no banco de dados. Você pode fazer isso executando o script dentro de um contêiner temporário que se conecta à mesma rede.
-
-*(Nota: Este passo depende de como seu script `auto_sinapi` funciona. Adapte o comando abaixo se necessário.)*
-
-```bash
-# Exemplo de como rodar o script (pode precisar de adaptação)
-docker-compose run --rm api python -m auto_sinapi.seu_script_principal
-```
-
-### 6\. Configure o API Gateway (Kong)
-
-Agora, vamos configurar o Kong para proteger e gerenciar nossa API. Já existe um arquivo `kong/kong.yml` com a configuração básica. Para aplicá-lo, você pode usar uma ferramenta como o [deck](https://docs.konghq.com/deck/).
-
-*Para simplificar, por enquanto faremos a configuração via `curl` na API Admin do Kong.*
-
-**a) Registre o serviço da API no Kong:**
-
-```bash
-curl -i -X POST http://localhost:8001/services/ \
-  --data name=sinapi-api \
-  --data url=http://api:8000
-```
-
-**b) Crie uma rota para o serviço:**
-
-```bash
-curl -i -X POST http://localhost:8001/services/sinapi-api/routes \
-  --data 'paths[]=/' \
-  --data name=sinapi-route
-```
-
-**c) Habilite o plugin de autenticação por chave (key-auth):**
-
-```bash
-curl -i -X POST http://localhost:8001/services/sinapi-api/plugins \
-  --data name=key-auth \
-  --data config.key_names=X-API-KEY
-```
-
-**d) Habilite o plugin de limite de requisições (rate-limiting) para o Plano FREE:**
-Isso define um limite padrão para todos os usuários de 250 chamadas por dia e 30 por minuto.
-
-```bash
-curl -i -X POST http://localhost:8001/services/sinapi-api/plugins \
-  --data name=rate-limiting \
-  --data "config.day=250" \
-  --data "config.minute=30" \
-  --data "config.policy=local"
-```
-
-### 7\. Crie seu Primeiro Consumidor e Chave de API
-
-Agora você pode simular a criação de um "usuário" (chamado de `consumer` no Kong) e gerar uma chave para ele.
-
-**a) Crie um consumidor (ex: "dev\_joao"):**
-
-```bash
-curl -i -X POST http://localhost:8001/consumers/ \
-  --data username=dev_joao
-```
-
-**b) Gere uma chave de API para o `dev_joao`:**
-
-```bash
-curl -i -X POST http://localhost:8001/consumers/dev_joao/key-auth/
-```
-
-Copie a `key` retornada no JSON. Será algo como `k_...`. **Essa é a chave que seu usuário usará.**
-
-### 8\. Teste a API\!
-
-Sua API agora está protegida e disponível na porta `8000`. As requisições devem incluir a chave no cabeçalho `X-API-KEY`.
-
-```bash
-# Substitua SUA_CHAVE_AQUI pela chave que você gerou no passo anterior
-curl -i -X GET http://localhost:8000/insumos/search/?q=CIMENTO \
-  -H "X-API-KEY: SUA_CHAVE_AQUI"
-```
-
-Se você remover o cabeçalho `-H "X-API-KEY: ..."` ou usar uma chave inválida, receberá um erro `401 Unauthorized`. Se exceder o limite, receberá um `429 Too Many Requests`.
-
-## Modelo de Planos (Open Source)
-
-Este setup já implementa um sistema de planos. Para criar um usuário com um plano diferente (ex: **Individual** com 10.000 chamadas/dia), você pode aplicar uma configuração de `rate-limiting` específica para aquele consumidor:
-
-```bash
-# 1. Crie um novo consumidor "cliente_premium"
-curl -i -X POST http://localhost:8001/consumers/ --data username=cliente_premium
-
-# 2. Gere a chave para ele (guarde a chave retornada)
-curl -i -X POST http://localhost:8001/consumers/cliente_premium/key-auth/
-
-# 3. Aplique um limite de requisições customizado para ele
-curl -i -X POST http://localhost:8001/consumers/cliente_premium/plugins \
-  --data name=rate-limiting \
-  --data "config.day=10000" \
-  --data "config.minute=120" \
-  --data "config.policy=local"
-```
-
-Agora, a chave do `cliente_premium` terá limites maiores que a do `dev_joao`.
-
-## Como Contribuir
-
-Contribuições são muito bem-vindas\! Se você tem ideias para novas funcionalidades, melhorias na performance ou correção de bugs, siga estes passos:
-
-1.  Faça um Fork do projeto.
-2.  Crie uma nova Branch (`git checkout -b feature/sua-feature`).
-3.  Faça suas alterações e realize o Commit (`git commit -m 'Adiciona nova feature'`).
-4.  Envie para a sua Branch (`git push origin feature/sua-feature`).
-5.  Abra um Pull Request.
-
-## Licença
-
-Este projeto está licenciado sob a Licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
+# 2. Gere a chave para ele (copie a "key" da resposta)
+curl -X POST http://localhost:8001/consumers/meu-usuario-local/key-auth/
