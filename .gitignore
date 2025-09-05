@@ -58,6 +58,7 @@ venv/
 ENV/
 env.bak
 venv.bak
+.manage-kong
 
 # Docker
 .dockerignore
