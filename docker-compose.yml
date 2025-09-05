@@ -1,5 +1,4 @@
 # docker-compose.yml
-# VERSÃO FINAL CORRIGIDA
 
 services:
   db:
@@ -67,8 +66,6 @@ services:
       - KONG_PG_HOST=db
       - KONG_PG_USER=${KONG_PG_USER}
       - KONG_PG_PASSWORD=${KONG_PG_PASSWORD}
-    # ---- CORREÇÃO CRÍTICA AQUI ----
-    # Usa o comando 'config db_import' que é compatível com Kong 3.4
     command: sh -c "kong migrations bootstrap && kong config db_import /usr/local/kong/declarative/kong.yml || sleep 3600"
     depends_on:
       db:
