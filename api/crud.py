@@ -128,17 +128,33 @@ def get_composicao_bom(
     Retorna o Bill of Materials (BOM) completo de uma composição, explodindo
     todos os níveis de subcomposições e calculando o custo de cada item.
     """
+    # Esta query recursiva (CTE) navega na árvore de composições.
     query = text(f"""
     WITH RECURSIVE composicao_completa (composicao_pai_codigo, item_codigo, tipo_item, coeficiente_total, nivel) AS (
-        SELECT composicao_pai_codigo, item_codigo, tipo_item, coeficiente AS coeficiente_total, 1 AS nivel
+        -- Caso base: Itens diretos da composição principal
+        SELECT
+            composicao_pai_codigo,
+            item_codigo,
+            tipo_item,
+            coeficiente AS coeficiente_total,
+            1 AS nivel
         FROM {settings.VIEW_COMPOSICAO_ITENS}
         WHERE composicao_pai_codigo = :codigo
+        
         UNION ALL
-        SELECT rec.composicao_pai_codigo, vis.item_codigo, vis.tipo_item, rec.coeficiente_total * vis.coeficiente AS coeficiente_total, rec.nivel + 1
+        
+        -- Passo recursivo: Itens das subcomposições
+        SELECT
+            rec.composicao_pai_codigo,
+            vis.item_codigo,
+            vis.tipo_item,
+            rec.coeficiente_total * vis.coeficiente AS coeficiente_total,
+            rec.nivel + 1
         FROM {settings.VIEW_COMPOSICAO_ITENS} AS vis
         JOIN composicao_completa AS rec ON vis.composicao_pai_codigo = rec.item_codigo
         WHERE rec.tipo_item = 'COMPOSICAO'
     )
+    -- Seleção final, unindo com os catálogos e preços/custos
     SELECT
         cc.item_codigo,
         cc.tipo_item,
@@ -158,6 +174,7 @@ def get_composicao_bom(
         AND pc.uf = :uf AND TO_CHAR(pc.data_referencia, 'YYYY-MM') = :data_referencia AND pc.regime = :regime
     ORDER BY cc.nivel, descricao;
     """)
+
     result = db.execute(query, {
         "codigo": codigo, "uf": uf.upper(), "data_referencia": data_referencia,
         "regime": regime.upper()
@@ -176,7 +193,9 @@ def get_composicao_man_hours(
         SELECT item_codigo, coeficiente AS coeficiente_total
         FROM {settings.VIEW_COMPOSICAO_ITENS}
         WHERE composicao_pai_codigo = :codigo
+        
         UNION ALL
+        
         SELECT vis.item_codigo, rec.coeficiente_total * vis.coeficiente
         FROM {settings.VIEW_COMPOSICAO_ITENS} AS vis
         JOIN composicao_insumos_base AS rec ON vis.composicao_pai_codigo = rec.item_codigo
@@ -256,10 +275,8 @@ def get_candidatos_otimizacao(
     if not bom_completo:
         return []
     
-    # Filtra para manter apenas insumos com custo calculado
     insumos = [item for item in bom_completo if item['tipo_item'] == 'INSUMO' and item['custo_impacto_total'] is not None]
     
-    # Ordena pelo custo de impacto total, em ordem decrescente
     insumos_sorted = sorted(insumos, key=lambda x: x['custo_impacto_total'], reverse=True)
     
     return insumos_sorted[:top_n]

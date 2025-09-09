@@ -1,6 +1,6 @@
 # 🚀 AutoSINAPI API: Acesso Instantâneo e Estruturado aos Dados da Construção Civil
 
-[![Versão](https://img.shields.io/badge/version-v1.1.0-blue.svg)](https://github.com/LAMP-LUCAS/autoSINAPI_API)
+[![Versão](https://img.shields.io/badge/version-alpha1-blue.svg)](https://github.com/LAMP-LUCAS/autoSINAPI_API)
 [![Licença](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)](https://www.docker.com/)
 [![Powered by: FastAPI](https://img.shields.io/badge/Powered%20by-FastAPI-green?logo=fastapi)](https://fastapi.tiangolo.com/)
@@ -71,11 +71,20 @@ Sua API estará no ar em `http://localhost:8000`. Gere sua chave de API localmen
 
 ### 🔧 Arquitetura e Tecnologias
 
-Este projeto é um ecossistema de microserviços orquestrado com Docker Compose, garantindo isolamento, escalabilidade e robustez: **Kong** (API Gateway), **FastAPI** (Backend), **PostgreSQL** (Banco de Dados), **Redis** (Fila de Tarefas), **Celery** (Worker) e o **AutoSINAPI** (Toolkit de ETL).
+Este projeto é um ecossistema de microserviços orquestrado com Docker Compose, garantindo isolamento, escalabilidade e robustez.
+
+* **API Gateway (Kong):** Gerencia toda a autenticação, segurança e limites de uso (rate limiting).
+* **API Backend (FastAPI):** A aplicação principal que serve os endpoints de consulta de dados.
+* **Banco de Dados (PostgreSQL):** Armazena de forma otimizada todos os dados do SINAPI.
+* **Fila de Tarefas (Redis):** Gerencia as tarefas de longa duração, como a população do banco.
+* **Worker (Celery):** O "trabalhador" que executa as tarefas pesadas (usando o módulo `AutoSINAPI`) em segundo plano, sem travar a API.
+* **Toolkit de ETL (AutoSINAPI):** O cérebro por trás da coleta e tratamento dos dados.
 
 ---
 
 ### 🎛️ Gerenciando o Ambiente com `make`
+
+Para facilitar a vida de quem auto-hospeda, criamos um painel de controle simples via `Makefile`.
 
 | Comando           | Descrição                                                          |
 |-------------------|--------------------------------------------------------------------|
@@ -83,6 +92,7 @@ Este projeto é um ecossistema de microserviços orquestrado com Docker Compose,
 | `make down`       | Para todos os serviços e remove os contêineres e volumes.           |
 | `make populate-db`| Executa o script de download e inserção dos dados do SINAPI.       |
 | `make logs-api`   | Exibe os logs do contêiner da API em tempo real.                   |
+| `make logs-kong`  | Exibe os logs do contêiner do Kong Gateway.                        |
 | `make status`     | Mostra o status atual de todos os contêineres.                     |
 
 **Para gerar sua chave de API localmente:**
