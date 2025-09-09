@@ -11,7 +11,7 @@ down:
 
 populate-db:
 	@echo "Disparando a tarefa de ETL para popular o banco de dados..."
-	docker-compose exec api python -c "from tasks import populate_database; populate_database.delay()"
+	docker-compose exec api python -c "from api.tasks import populate_sinapi_task; populate_sinapi_task.delay()"
 
 logs-api:
 	@echo "Exibindo logs do container da API..."

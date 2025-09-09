@@ -1,4 +1,10 @@
-#!/bin/sh
+#!/bin/bash
+# Check if this script is being executed by ash (sh on Alpine)
+if [ -z "$BASH_VERSION" ]; then
+    # If not bash, re-execute with bash
+    exec /bin/bash "$0" "$@"
+fi
+
 set -e
 set -u
 
