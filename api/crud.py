@@ -244,3 +244,22 @@ def get_abc_curve_for_composicoes(
             return 'C'
     df['classe_abc'] = df['percentual_acumulado'].apply(classificar_abc)
     return df.to_dict(orient='records')
+
+def get_candidatos_otimizacao(
+    db: Session, codigo: int, uf: str, data_referencia: str, regime: str, top_n: int = 5
+) -> List[dict]:
+    """
+    Identifica os insumos de maior impacto financeiro em uma composição,
+    servindo como candidatos para otimização de custos.
+    """
+    bom_completo = get_composicao_bom(db, codigo=codigo, uf=uf, data_referencia=data_referencia, regime=regime)
+    if not bom_completo:
+        return []
+    
+    # Filtra para manter apenas insumos com custo calculado
+    insumos = [item for item in bom_completo if item['tipo_item'] == 'INSUMO' and item['custo_impacto_total'] is not None]
+    
+    # Ordena pelo custo de impacto total, em ordem decrescente
+    insumos_sorted = sorted(insumos, key=lambda x: x['custo_impacto_total'], reverse=True)
+    
+    return insumos_sorted[:top_n]

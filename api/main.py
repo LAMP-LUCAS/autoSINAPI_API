@@ -164,3 +164,20 @@ def get_abc_curve(
     if not abc_curve:
         raise HTTPException(status_code=404, detail="Nenhum insumo encontrado para as composições e filtros especificados.")
     return abc_curve
+
+@app.get("/bi/composicao/{codigo}/otimizar", response_model=List[schemas.ComposicaoBOMItem], tags=["Business Intelligence"])
+def get_optimization_candidates(
+    codigo: int,
+    uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
+    data_referencia: str = Query(..., description="Data de referência no formato AAAA-MM. Ex: 2025-09"),
+    regime: str = Query("NAO_DESONERADO", description="Regime de custo/preço."),
+    top_n: int = Query(5, description="Número de principais insumos a serem retornados."),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna os N insumos de maior impacto financeiro em uma composição (Curva ABC - Foco).
+    """
+    candidates = crud.get_candidatos_otimizacao(db, codigo=codigo, uf=uf, data_referencia=data_referencia, regime=regime, top_n=top_n)
+    if not candidates:
+        raise HTTPException(status_code=404, detail="Não foi possível calcular os candidatos para otimização.")
+    return candidates
