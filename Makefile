@@ -11,7 +11,7 @@ down:
 
 populate-db:
 	@echo "Disparando a tarefa de ETL para popular o banco de dados..."
-	docker-compose exec api python -c "from tasks import populate_database; populate_database.delay()"
+	docker-compose exec api python -c "import os; from api.tasks import populate_sinapi_task; db_config = {'host': os.getenv('POSTGRES_HOST', 'db'), 'port': int(os.getenv('POSTGRES_PORT', 5432)), 'database': os.getenv('POSTGRES_DB'), 'user': os.getenv('POSTGRES_USER'), 'password': os.getenv('POSTGRES_PASSWORD')}; sinapi_config = {'year': 2025, 'month': 7}; populate_sinapi_task.delay(db_config, sinapi_config)"
 
 logs-api:
 	@echo "Exibindo logs do container da API..."
