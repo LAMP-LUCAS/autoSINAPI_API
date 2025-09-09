@@ -45,3 +45,8 @@ class CurvaABCItem(BaseModel):
     percentual_acumulado: float
     classe_abc: str
     class Config: from_attributes = True
+
+class HistoricoCusto(BaseModel):
+    data_referencia: str
+    valor: float
+    class Config: from_attributes = True

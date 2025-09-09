@@ -9,9 +9,10 @@ orquestrando as chamadas para as funções do módulo `crud` e utilizando os
 
 import os
 from typing import List
-from fastapi import FastAPI, Depends, HTTPException, Query, Body
+from fastapi import FastAPI, Depends, HTTPException, Query, Body, Path
 from sqlalchemy.orm import Session
-from datetime import date
+from datetime import date, datetime
+from dateutil.relativedelta import relativedelta
 
 from . import crud, schemas, config
 from .database import get_db
@@ -181,3 +182,35 @@ def get_optimization_candidates(
     if not candidates:
         raise HTTPException(status_code=404, detail="Não foi possível calcular os candidatos para otimização.")
     return candidates
+
+@app.get("/bi/item/{tipo_item}/{codigo}/historico", response_model=List[schemas.HistoricoCusto], tags=["Business Intelligence"])
+def get_item_cost_history(
+    tipo_item: str = Path(..., description="Tipo do item: 'insumo' ou 'composicao'"),
+    codigo: int = Path(..., description="Código do item."),
+    uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
+    regime: str = Query("NAO_DESONERADO", description="Regime de custo/preço."),
+    data_fim: str = Query(f"{date.today():%Y-%m}", description="Data final (AAAA-MM) da análise."),
+    meses: int = Query(12, description="Número de meses a serem analisados para trás."),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna o histórico de custo/preço de um item para um período.
+    """
+    try:
+        end_date = datetime.strptime(data_fim, "%Y-%m")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Formato de data_fim inválido. Use AAAA-MM.")
+
+    start_date = end_date - relativedelta(months=meses - 1)
+    data_inicio_str = start_date.strftime("%Y-%m")
+
+    if tipo_item not in ['insumo', 'composicao']:
+        raise HTTPException(status_code=400, detail="Tipo de item inválido. Use 'insumo' ou 'composicao'.")
+
+    history = crud.get_custo_historico(
+        db, tipo_item=tipo_item, codigo=codigo, uf=uf, regime=regime,
+        data_inicio=data_inicio_str, data_fim=data_fim
+    )
+    if not history:
+        raise HTTPException(status_code=404, detail="Não foram encontrados dados históricos para o item e filtros especificados.")
+    return history

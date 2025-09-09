@@ -263,3 +263,36 @@ def get_candidatos_otimizacao(
     insumos_sorted = sorted(insumos, key=lambda x: x['custo_impacto_total'], reverse=True)
     
     return insumos_sorted[:top_n]
+
+def get_custo_historico(
+    db: Session, tipo_item: str, codigo: int, uf: str, regime: str, data_inicio: str, data_fim: str
+) -> List[dict]:
+    """
+    Busca o histórico de preço/custo de um item dentro de um período.
+    """
+    if tipo_item == 'insumo':
+        table_name = settings.TABLE_PRECOS_INSUMOS
+        code_column = 'insumo_codigo'
+        value_column = 'preco_mediano'
+    elif tipo_item == 'composicao':
+        table_name = settings.TABLE_CUSTOS_COMPOSICOES
+        code_column = 'composicao_codigo'
+        value_column = 'custo_total'
+    else:
+        return []
+
+    query = text(f"""
+        SELECT TO_CHAR(data_referencia, 'YYYY-MM') as data_referencia, {value_column} as valor
+        FROM {table_name}
+        WHERE {code_column} = :codigo
+          AND uf = :uf
+          AND regime = :regime
+          AND TO_CHAR(data_referencia, 'YYYY-MM') >= :data_inicio
+          AND TO_CHAR(data_referencia, 'YYYY-MM') <= :data_fim
+        ORDER BY data_referencia ASC
+    """)
+    result = db.execute(query, {
+        "codigo": codigo, "uf": uf.upper(), "regime": regime.upper(),
+        "data_inicio": data_inicio, "data_fim": data_fim
+    }).fetchall()
+    return result
