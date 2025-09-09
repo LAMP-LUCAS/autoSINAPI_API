@@ -21,7 +21,7 @@ services:
     networks:
       - sinapi-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d sinapi"]
+      test: ["CMD-SHELL", "pg_isready -U kong -d kong"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -57,7 +57,8 @@ services:
       - sinapi-net
 
   kong-migrations:
-    image: kong:3.4
+    #image: kong:3.4
+    build: ./kong/
     container_name: kong_migrations
     env_file: .env
     environment:
@@ -69,11 +70,13 @@ services:
     command: >
       sh -c "
         echo 'Waiting for PostgreSQL user \"kong\" to be created...';
-        until pg_isready -h db -U ${KONG_PG_USER} -d kong;
+        until pg_isready -h db -U ${KONG_PG_USER} -d kong; do
+          echo 'Waiting for database...';
           sleep 2;
         done;
-        echo 'User \"kong\" is ready. Running Kong migrations...';
-        kong migrations bootstrap && kong config db_import /usr/local/kong/declarative/kong.yml || sleep 3600
+        echo 'User \"kong\" is ready. Resetting and running Kong migrations...';
+        #kong migrations reset -y && kong migrations bootstrap && kong config db_import /usr/local/kong/declarative/kong.yml || sleep 3600
+        kong migrations bootstrap --vv
       "
     depends_on:
       db:
@@ -85,7 +88,8 @@ services:
       - ./kong:/usr/local/kong/declarative
 
   kong:
-    image: kong:3.4
+    #image: kong:3.4
+    build: ./kong/
     container_name: sinapi_gateway
     env_file: .env
     environment:

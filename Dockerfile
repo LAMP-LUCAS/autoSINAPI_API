@@ -10,8 +10,12 @@ ENV PYTHONUNBUFFERED 1
 # Estágio 2: Instalação de dependências
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN apt-get update && \
+    apt-get install -y git --no-install-recommends && \
+    pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Estágio 3: Cópia do código da aplicação
 COPY ./api /app/api
