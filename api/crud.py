@@ -128,33 +128,17 @@ def get_composicao_bom(
     Retorna o Bill of Materials (BOM) completo de uma composição, explodindo
     todos os níveis de subcomposições e calculando o custo de cada item.
     """
-    # Esta query recursiva (CTE) navega na árvore de composições.
     query = text(f"""
     WITH RECURSIVE composicao_completa (composicao_pai_codigo, item_codigo, tipo_item, coeficiente_total, nivel) AS (
-        -- Caso base: Itens diretos da composição principal
-        SELECT
-            composicao_pai_codigo,
-            item_codigo,
-            tipo_item,
-            coeficiente AS coeficiente_total,
-            1 AS nivel
+        SELECT composicao_pai_codigo, item_codigo, tipo_item, coeficiente AS coeficiente_total, 1 AS nivel
         FROM {settings.VIEW_COMPOSICAO_ITENS}
         WHERE composicao_pai_codigo = :codigo
-        
         UNION ALL
-        
-        -- Passo recursivo: Itens das subcomposições
-        SELECT
-            rec.composicao_pai_codigo,
-            vis.item_codigo,
-            vis.tipo_item,
-            rec.coeficiente_total * vis.coeficiente AS coeficiente_total,
-            rec.nivel + 1
+        SELECT rec.composicao_pai_codigo, vis.item_codigo, vis.tipo_item, rec.coeficiente_total * vis.coeficiente AS coeficiente_total, rec.nivel + 1
         FROM {settings.VIEW_COMPOSICAO_ITENS} AS vis
         JOIN composicao_completa AS rec ON vis.composicao_pai_codigo = rec.item_codigo
         WHERE rec.tipo_item = 'COMPOSICAO'
     )
-    -- Seleção final, unindo com os catálogos e preços/custos
     SELECT
         cc.item_codigo,
         cc.tipo_item,
@@ -174,7 +158,6 @@ def get_composicao_bom(
         AND pc.uf = :uf AND TO_CHAR(pc.data_referencia, 'YYYY-MM') = :data_referencia AND pc.regime = :regime
     ORDER BY cc.nivel, descricao;
     """)
-
     result = db.execute(query, {
         "codigo": codigo, "uf": uf.upper(), "data_referencia": data_referencia,
         "regime": regime.upper()
@@ -193,9 +176,7 @@ def get_composicao_man_hours(
         SELECT item_codigo, coeficiente AS coeficiente_total
         FROM {settings.VIEW_COMPOSICAO_ITENS}
         WHERE composicao_pai_codigo = :codigo
-        
         UNION ALL
-        
         SELECT vis.item_codigo, rec.coeficiente_total * vis.coeficiente
         FROM {settings.VIEW_COMPOSICAO_ITENS} AS vis
         JOIN composicao_insumos_base AS rec ON vis.composicao_pai_codigo = rec.item_codigo
@@ -216,31 +197,8 @@ def get_abc_curve_for_composicoes(
     Calcula a Curva ABC de insumos para um grupo de composições, identificando
     os itens de maior impacto financeiro.
     """
-    # Passo 1: SQL para obter o custo total de cada insumo base
     query = text(f"""
-    WITH RECURSIVE insumos_base (composicao_origem, insumo_codigo, coeficiente_acumulado) AS (
-        -- Ponto de partida: insumos diretos das composições da lista
-        SELECT
-            composicao_pai_codigo AS composicao_origem,
-            item_codigo AS insumo_codigo,
-            coeficiente AS coeficiente_acumulado
-        FROM {settings.VIEW_COMPOSICAO_ITENS}
-        WHERE tipo_item = 'INSUMO' AND composicao_pai_codigo IN :codigos
-        
-        UNION ALL
-        
-        -- Passo recursivo: explode subcomposições até chegar nos insumos base
-        SELECT
-            rec.composicao_origem,
-            vis.item_codigo AS insumo_codigo,
-            rec.coeficiente_acumulado * vis.coeficiente AS coeficiente_acumulado
-        FROM {settings.VIEW_COMPOSICAO_ITENS} AS vis
-        JOIN insumos_base AS rec ON vis.composicao_pai_codigo = rec.insumo_codigo -- Aqui está o erro de recursão, deveria ser o item_codigo anterior
-                                                                                   -- Na verdade, a lógica precisa ser um pouco diferente.
-                                                                                   -- Vamos refazer a recursão para ser mais clara.
-    ),
-    -- Correção da lógica recursiva
-    composicao_completa (composicao_pai_codigo, item_codigo, tipo_item, coeficiente_total) AS (
+    WITH RECURSIVE composicao_completa (composicao_pai_codigo, item_codigo, tipo_item, coeficiente_total) AS (
         SELECT codigo, codigo, 'COMPOSICAO', 1.0 FROM {settings.TABLE_COMPOSICOES} WHERE codigo IN :codigos
         UNION ALL
         SELECT rec.composicao_pai_codigo, vis.item_codigo, vis.tipo_item, rec.coeficiente_total * vis.coeficiente
@@ -248,7 +206,6 @@ def get_abc_curve_for_composicoes(
         JOIN composicao_completa as rec ON vis.composicao_pai_codigo = rec.item_codigo
         WHERE rec.tipo_item = 'COMPOSICAO'
     )
-    -- Agrupamento final dos custos por insumo
     SELECT
         i.codigo,
         i.descricao,
@@ -265,27 +222,19 @@ def get_abc_curve_for_composicoes(
     HAVING SUM(cc.coeficiente_total * p.preco_mediano) > 0
     ORDER BY custo_total_agregado DESC;
     """)
-    
-    # Executa a query no banco
     params = {
         "codigos": tuple(codigos), "uf": uf.upper(),
         "data_referencia": data_referencia, "regime": regime.upper()
     }
     insumos_custo = db.execute(query, params).fetchall()
-
     if not insumos_custo:
         return []
-
-    # Passo 2: Lógica da Curva ABC em Python com Pandas
     df = pd.DataFrame(insumos_custo, columns=['codigo', 'descricao', 'unidade', 'custo_total_agregado'])
     df['custo_total_agregado'] = pd.to_numeric(df['custo_total_agregado'])
-    
     custo_total_geral = df['custo_total_agregado'].sum()
     df = df.sort_values(by='custo_total_agregado', ascending=False)
-    
     df['percentual_individual'] = (df['custo_total_agregado'] / custo_total_geral) * 100
     df['percentual_acumulado'] = df['percentual_individual'].cumsum()
-
     def classificar_abc(percentual_acumulado):
         if percentual_acumulado <= 80:
             return 'A'
@@ -293,7 +242,5 @@ def get_abc_curve_for_composicoes(
             return 'B'
         else:
             return 'C'
-
     df['classe_abc'] = df['percentual_acumulado'].apply(classificar_abc)
-    
     return df.to_dict(orient='records')

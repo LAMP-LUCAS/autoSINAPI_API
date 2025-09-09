@@ -66,7 +66,15 @@ services:
       - KONG_PG_HOST=db
       - KONG_PG_USER=${KONG_PG_USER}
       - KONG_PG_PASSWORD=${KONG_PG_PASSWORD}
-    command: sh -c "kong migrations bootstrap && kong config db_import /usr/local/kong/declarative/kong.yml || sleep 3600"
+    command: >
+      sh -c "
+        echo 'Waiting for PostgreSQL user \"kong\" to be created...';
+        until pg_isready -h db -U ${KONG_PG_USER} -d kong;
+          sleep 2;
+        done;
+        echo 'User \"kong\" is ready. Running Kong migrations...';
+        kong migrations bootstrap && kong config db_import /usr/local/kong/declarative/kong.yml || sleep 3600
+      "
     depends_on:
       db:
         condition: service_healthy

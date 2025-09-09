@@ -2,44 +2,28 @@
 """
 Módulo de Schemas Pydantic para a API.
 
-Este módulo define a estrutura, os tipos de dados e a validação para os
-objetos que são recebidos e, principalmente, retornados pela API.
-
-O uso de `orm_mode = True` (ou `from_attributes = True` em Pydantic V2)
-permite que os modelos sejam criados diretamente a partir de objetos do
-SQLAlchemy, facilitando a conversão dos resultados do banco de dados em JSON.
+Define a estrutura dos dados que serão recebidos e enviados pela API.
+Esses modelos garantem a validação, serialização e documentação automática
+dos dados, sendo um pilar fundamental do FastAPI.
 """
 from pydantic import BaseModel
 from typing import List, Optional
 
-# --- Schemas Base (CRUD) ---
-
 class Insumo(BaseModel):
-    """Schema para um insumo com seu preço contextual."""
     codigo: int
     descricao: str
     unidade: str
     preco_mediano: Optional[float] = None
-
-    class Config:
-        from_attributes = True # Equivalente ao orm_mode para Pydantic V2+
-
+    class Config: from_attributes = True
 
 class Composicao(BaseModel):
-    """Schema para uma composição com seu custo contextual."""
     codigo: int
     descricao: str
     unidade: str
     custo_total: Optional[float] = None
-
-    class Config:
-        from_attributes = True
-
-
-# --- Schemas de Business Intelligence (BI) ---
+    class Config: from_attributes = True
 
 class ComposicaoBOMItem(BaseModel):
-    """Schema para um item dentro do Bill of Materials de uma composição."""
     item_codigo: int
     tipo_item: str
     descricao: str
@@ -47,18 +31,12 @@ class ComposicaoBOMItem(BaseModel):
     coeficiente_total: float
     custo_unitario: Optional[float] = None
     custo_impacto_total: Optional[float] = None
-
-    class Config:
-        from_attributes = True
-
+    class Config: from_attributes = True
 
 class ComposicaoManHours(BaseModel):
-    """Schema para o resultado do cálculo de Hora/Homem."""
     total_hora_homem: Optional[float] = 0.0
 
-
 class CurvaABCItem(BaseModel):
-    """Schema para um item na análise da Curva ABC."""
     codigo: int
     descricao: str
     unidade: str
@@ -66,6 +44,4 @@ class CurvaABCItem(BaseModel):
     percentual_individual: float
     percentual_acumulado: float
     classe_abc: str
-
-    class Config:
-        from_attributes = True
+    class Config: from_attributes = True
