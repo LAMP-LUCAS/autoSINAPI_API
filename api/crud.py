@@ -216,31 +216,8 @@ def get_abc_curve_for_composicoes(
     Calcula a Curva ABC de insumos para um grupo de composições, identificando
     os itens de maior impacto financeiro.
     """
-    # Passo 1: SQL para obter o custo total de cada insumo base
     query = text(f"""
-    WITH RECURSIVE insumos_base (composicao_origem, insumo_codigo, coeficiente_acumulado) AS (
-        -- Ponto de partida: insumos diretos das composições da lista
-        SELECT
-            composicao_pai_codigo AS composicao_origem,
-            item_codigo AS insumo_codigo,
-            coeficiente AS coeficiente_acumulado
-        FROM {settings.VIEW_COMPOSICAO_ITENS}
-        WHERE tipo_item = 'INSUMO' AND composicao_pai_codigo IN :codigos
-        
-        UNION ALL
-        
-        -- Passo recursivo: explode subcomposições até chegar nos insumos base
-        SELECT
-            rec.composicao_origem,
-            vis.item_codigo AS insumo_codigo,
-            rec.coeficiente_acumulado * vis.coeficiente AS coeficiente_acumulado
-        FROM {settings.VIEW_COMPOSICAO_ITENS} AS vis
-        JOIN insumos_base AS rec ON vis.composicao_pai_codigo = rec.insumo_codigo -- Aqui está o erro de recursão, deveria ser o item_codigo anterior
-                                                                                   -- Na verdade, a lógica precisa ser um pouco diferente.
-                                                                                   -- Vamos refazer a recursão para ser mais clara.
-    ),
-    -- Correção da lógica recursiva
-    composicao_completa (composicao_pai_codigo, item_codigo, tipo_item, coeficiente_total) AS (
+    WITH RECURSIVE composicao_completa (composicao_pai_codigo, item_codigo, tipo_item, coeficiente_total) AS (
         SELECT codigo, codigo, 'COMPOSICAO', 1.0 FROM {settings.TABLE_COMPOSICOES} WHERE codigo IN :codigos
         UNION ALL
         SELECT rec.composicao_pai_codigo, vis.item_codigo, vis.tipo_item, rec.coeficiente_total * vis.coeficiente
@@ -248,7 +225,6 @@ def get_abc_curve_for_composicoes(
         JOIN composicao_completa as rec ON vis.composicao_pai_codigo = rec.item_codigo
         WHERE rec.tipo_item = 'COMPOSICAO'
     )
-    -- Agrupamento final dos custos por insumo
     SELECT
         i.codigo,
         i.descricao,
@@ -265,27 +241,19 @@ def get_abc_curve_for_composicoes(
     HAVING SUM(cc.coeficiente_total * p.preco_mediano) > 0
     ORDER BY custo_total_agregado DESC;
     """)
-    
-    # Executa a query no banco
     params = {
         "codigos": tuple(codigos), "uf": uf.upper(),
         "data_referencia": data_referencia, "regime": regime.upper()
     }
     insumos_custo = db.execute(query, params).fetchall()
-
     if not insumos_custo:
         return []
-
-    # Passo 2: Lógica da Curva ABC em Python com Pandas
     df = pd.DataFrame(insumos_custo, columns=['codigo', 'descricao', 'unidade', 'custo_total_agregado'])
     df['custo_total_agregado'] = pd.to_numeric(df['custo_total_agregado'])
-    
     custo_total_geral = df['custo_total_agregado'].sum()
     df = df.sort_values(by='custo_total_agregado', ascending=False)
-    
     df['percentual_individual'] = (df['custo_total_agregado'] / custo_total_geral) * 100
     df['percentual_acumulado'] = df['percentual_individual'].cumsum()
-
     def classificar_abc(percentual_acumulado):
         if percentual_acumulado <= 80:
             return 'A'
@@ -293,7 +261,55 @@ def get_abc_curve_for_composicoes(
             return 'B'
         else:
             return 'C'
-
     df['classe_abc'] = df['percentual_acumulado'].apply(classificar_abc)
-    
     return df.to_dict(orient='records')
+
+def get_candidatos_otimizacao(
+    db: Session, codigo: int, uf: str, data_referencia: str, regime: str, top_n: int = 5
+) -> List[dict]:
+    """
+    Identifica os insumos de maior impacto financeiro em uma composição,
+    servindo como candidatos para otimização de custos.
+    """
+    bom_completo = get_composicao_bom(db, codigo=codigo, uf=uf, data_referencia=data_referencia, regime=regime)
+    if not bom_completo:
+        return []
+    
+    insumos = [item for item in bom_completo if item['tipo_item'] == 'INSUMO' and item['custo_impacto_total'] is not None]
+    
+    insumos_sorted = sorted(insumos, key=lambda x: x['custo_impacto_total'], reverse=True)
+    
+    return insumos_sorted[:top_n]
+
+def get_custo_historico(
+    db: Session, tipo_item: str, codigo: int, uf: str, regime: str, data_inicio: str, data_fim: str
+) -> List[dict]:
+    """
+    Busca o histórico de preço/custo de um item dentro de um período.
+    """
+    if tipo_item == 'insumo':
+        table_name = settings.TABLE_PRECOS_INSUMOS
+        code_column = 'insumo_codigo'
+        value_column = 'preco_mediano'
+    elif tipo_item == 'composicao':
+        table_name = settings.TABLE_CUSTOS_COMPOSICOES
+        code_column = 'composicao_codigo'
+        value_column = 'custo_total'
+    else:
+        return []
+
+    query = text(f"""
+        SELECT TO_CHAR(data_referencia, 'YYYY-MM') as data_referencia, {value_column} as valor
+        FROM {table_name}
+        WHERE {code_column} = :codigo
+          AND uf = :uf
+          AND regime = :regime
+          AND TO_CHAR(data_referencia, 'YYYY-MM') >= :data_inicio
+          AND TO_CHAR(data_referencia, 'YYYY-MM') <= :data_fim
+        ORDER BY data_referencia ASC
+    """)
+    result = db.execute(query, {
+        "codigo": codigo, "uf": uf.upper(), "regime": regime.upper(),
+        "data_inicio": data_inicio, "data_fim": data_fim
+    }).fetchall()
+    return result

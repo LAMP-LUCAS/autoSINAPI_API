@@ -29,7 +29,9 @@ celery_app.config_from_object('api.celery_config')
 def populate_sinapi_task(db_config: dict, sinapi_config: dict):
     """
     A tarefa que o Celery Worker irá executar para popular a base de dados.
-    Ela chama a função principal do toolkit AutoSINAPI.
+
+    Recebe as configurações do banco de dados e do SINAPI, e dispara o processo
+    de ETL da biblioteca `autosinapi`.
     """
     try:
         # Chama a interface pública do toolkit para executar o ETL

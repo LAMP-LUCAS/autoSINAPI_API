@@ -5,9 +5,9 @@ Módulo de Schemas Pydantic para a API.
 Este módulo define a estrutura, os tipos de dados e a validação para os
 objetos que são recebidos e, principalmente, retornados pela API.
 
-O uso de `orm_mode = True` (ou `from_attributes = True` em Pydantic V2)
-permite que os modelos sejam criados diretamente a partir de objetos do
-SQLAlchemy, facilitando a conversão dos resultados do banco de dados em JSON.
+O uso de `from_attributes = True` permite que os modelos sejam criados
+diretamente a partir de objetos do SQLAlchemy, facilitando a conversão dos
+resultados do banco de dados em JSON.
 """
 from pydantic import BaseModel
 from typing import List, Optional
@@ -22,8 +22,7 @@ class Insumo(BaseModel):
     preco_mediano: Optional[float] = None
 
     class Config:
-        from_attributes = True # Equivalente ao orm_mode para Pydantic V2+
-
+        from_attributes = True
 
 class Composicao(BaseModel):
     """Schema para uma composição com seu custo contextual."""
@@ -34,7 +33,6 @@ class Composicao(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 # --- Schemas de Business Intelligence (BI) ---
 
@@ -51,11 +49,9 @@ class ComposicaoBOMItem(BaseModel):
     class Config:
         from_attributes = True
 
-
 class ComposicaoManHours(BaseModel):
     """Schema para o resultado do cálculo de Hora/Homem."""
     total_hora_homem: Optional[float] = 0.0
-
 
 class CurvaABCItem(BaseModel):
     """Schema para um item na análise da Curva ABC."""
@@ -66,6 +62,14 @@ class CurvaABCItem(BaseModel):
     percentual_individual: float
     percentual_acumulado: float
     classe_abc: str
+
+    class Config:
+        from_attributes = True
+
+class HistoricoCusto(BaseModel):
+    """Schema para um ponto de dado no histórico de custo de um item."""
+    data_referencia: str
+    valor: float
 
     class Config:
         from_attributes = True
