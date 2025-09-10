@@ -47,13 +47,21 @@ Tenha sua própria instância da API, com banco de dados e toda a infraestrutura
     ```
 
 4.  **Popule o Banco de Dados**
-    Execute o comando para iniciar a tarefa de ETL, que irá baixar e inserir os dados mais recentes do SINAPI.
+    Execute o comando para iniciar a tarefa de ETL, que irá baixar e inserir os dados do SINAPI.
     ```bash
     make populate-db
     ```
     *Este processo pode levar alguns minutos. Você pode acompanhar o progresso com `docker-compose logs -f celery_worker`.*
 
-5.  **Gere sua Chave e Faça a Primeira Consulta!**
+5.  **(Opcional) Usando Arquivos SINAPI Locais**
+    Para pular a etapa de download (ideal para usar dados históricos ou em ambientes offline), você pode usar arquivos `.zip` do SINAPI.
+
+    1.  Crie uma subpasta dentro de `autosinapi_downloads` com o nome no formato `AAAA_MM` (ex: `2024_07`).
+    2.  Coloque o arquivo `.zip` do SINAPI correspondente a essa data dentro desta subpasta.
+
+    Quando você executar `make populate-db`, o sistema irá detectar o arquivo local e usá-lo para a carga de dados, ignorando o download.
+
+6.  **Gere sua Chave e Faça a Primeira Consulta!**
     Sua API está no ar, protegida por um gateway. Para usá-la, basta criar um "consumidor" e gerar uma chave de acesso.
 
     ```bash
