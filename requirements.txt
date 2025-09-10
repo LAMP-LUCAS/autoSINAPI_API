@@ -6,3 +6,8 @@ psycopg2-binary
 python-dotenv
 celery
 redis
+pydantic-settings
+pandas
+python-dateutil
+# Instala o toolkit autoSINAPI diretamente do repositório Git
+git+https://github.com/LAMP-LUCAS/AutoSINAPI.git@develop

@@ -1,12 +1,13 @@
-#!/bin/bash
+#!/bin/sh
+
 set -e
 set -u
 
 # Banco padrão para conectar e criar outros
 DEFAULT_DB="postgres"
 
-function create_database() {
-    local database=$1
+create_database() {
+    database=$1
     echo "Creating database '$database'"
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$DEFAULT_DB" <<-EOSQL
         SELECT 'CREATE DATABASE $database' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$database');
@@ -14,10 +15,10 @@ function create_database() {
 EOSQL
 }
 
-function create_user_and_database() {
-    local user=$1
-    local password=$2
-    local db=$3
+create_user_and_database() {
+    user=$1
+    password=$2
+    db=$3
     echo "Creating user '$user' and database '$db'"
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$DEFAULT_DB" <<-EOSQL
         DO \$$
@@ -50,8 +51,8 @@ fi
 
 if [ -n "$POSTGRES_MULTIPLE_DATABASES" ]; then
     echo "Multiple database creation requested: $POSTGRES_MULTIPLE_DATABASES"
-    for db in $(echo $POSTGRES_MULTIPLE_DATABASES | tr ',' ' '); do
-        if [ "$db" == "kong" ]; then
+    for db in $(echo "$POSTGRES_MULTIPLE_DATABASES" | tr ',' ' '); do
+        if [ "$db" = "kong" ]; then
             if [ -z "${KONG_PG_USER:-}" ] || [ -z "${KONG_PG_PASSWORD:-}" ]; then
                 echo "KONG_PG_USER ou KONG_PG_PASSWORD não definidos para criar o banco kong"
                 exit 1
