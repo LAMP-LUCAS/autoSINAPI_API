@@ -1,7 +1,7 @@
 # 🚀 autoSINAPI API: A sua ponte para os dados do SINAPI.
 
-[![Versão](https://img.shields.io/badge/version-alpha1-blue.svg)](https://github.com/LAMP-LUCAS/autoSINAPI_API)
-[![Licença](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Versão](https://img.shields.io/badge/version-v0.1.0--beta.0-orange.svg)](https://github.com/LAMP-LUCAS/autoSINAPI_API)
+[![Licença](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)](https://www.docker.com/)
 [![Powered by: FastAPI](https://img.shields.io/badge/Powered%20by-FastAPI-green?logo=fastapi)](https://fastapi.tiangolo.com/)
 
