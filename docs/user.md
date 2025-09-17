@@ -14,6 +14,8 @@ X-API-KEY: sua_chave_de_api_aqui
 
 ## Endpoints Disponíveis
 
+> **Nota:** Os exemplos abaixo utilizam a data de referência `2025-09`. Lembre-se de substituir este valor pela data (no formato `AAAA-MM`) que você deseja consultar.
+
 ### 1. Raiz da API
 
 *   **GET /**
@@ -38,8 +40,8 @@ X-API-KEY: sua_chave_de_api_aqui
         *   `codigo` (inteiro, obrigatório): O código do insumo.
     *   **Parâmetros de Query:**
         *   `uf` (string, obrigatório): Unidade Federativa (UF). Ex: `SP`.
-        *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`. Ex: `2025-09`.
-        *   `regime` (string, opcional): Regime de preço. Padrão: `NAO_DESONERADO`.
+        *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`.
+        *   `regime` (string, opcional): Regime de preço. Valores possíveis: `NAO_DESONERADO` (padrão), `DESONERADO`.
     *   **Exemplo de `curl`:**
         ```bash
         curl -X GET "http://localhost:8000/insumos/43430?uf=SP&data_referencia=2025-09" -H "X-API-KEY: sua_chave_de_api_aqui"
@@ -51,7 +53,7 @@ X-API-KEY: sua_chave_de_api_aqui
     *   **Parâmetros de Query:**
         *   `q` (string, obrigatório): Termo para buscar na descrição do insumo (mínimo 3 caracteres).
         *   `uf` (string, obrigatório): Unidade Federativa (UF). Ex: `SP`.
-        *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`. Ex: `2025-09`.
+        *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`.
         *   `regime` (string, opcional): Regime de preço. Padrão: `NAO_DESONERADO`.
         *   `skip` (inteiro, opcional): Número de itens a serem pulados (para paginação). Padrão: `0`.
         *   `limit` (inteiro, opcional): Número máximo de itens a serem retornados. Padrão: `100`.
@@ -69,7 +71,7 @@ X-API-KEY: sua_chave_de_api_aqui
         *   `codigo` (inteiro, obrigatório): O código da composição.
     *   **Parâmetros de Query:**
         *   `uf` (string, obrigatório): Unidade Federativa (UF). Ex: `SP`.
-        *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`. Ex: `2025-09`.
+        *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`.
         *   `regime` (string, opcional): Regime de custo. Padrão: `NAO_DESONERADO`.
     *   **Exemplo de `curl`:**
         ```bash
@@ -82,7 +84,7 @@ X-API-KEY: sua_chave_de_api_aqui
     *   **Parâmetros de Query:**
         *   `q` (string, obrigatório): Termo para buscar na descrição da composição (mínimo 3 caracteres).
         *   `uf` (string, obrigatório): Unidade Federativa (UF). Ex: `SP`.
-        *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`. Ex: `2025-09`.
+        *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`.
         *   `regime` (string, opcional): Regime de custo. Padrão: `NAO_DESONERADO`.
         *   `skip` (inteiro, opcional): Número de itens a serem pulados (para paginação). Padrão: `0`.
         *   `limit` (inteiro, opcional): Número máximo de itens a serem retornados. Padrão: `100`.
@@ -100,7 +102,7 @@ X-API-KEY: sua_chave_de_api_aqui
         *   `codigo` (inteiro, obrigatório): O código da composição.
     *   **Parâmetros de Query:**
         *   `uf` (string, obrigatório): Unidade Federativa (UF). Ex: `SP`.
-        *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`. Ex: `2025-09`.
+        *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`.
         *   `regime` (string, opcional): Regime de custo/preço. Padrão: `NAO_DESONERADO`.
     *   **Exemplo de `curl`:**
         ```bash
@@ -122,7 +124,7 @@ X-API-KEY: sua_chave_de_api_aqui
     *   **Descrição:** Calcula a Curva ABC de insumos para um grupo de composições, identificando os itens de maior impacto financeiro.
     *   **Parâmetros de Query:**
         *   `uf` (string, obrigatório): Unidade Federativa (UF). Ex: `SP`.
-        *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`. Ex: `2025-09`.
+        *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`.
         *   `regime` (string, opcional): Regime de preço. Padrão: `NAO_DESONERADO`.
     *   **Corpo da Requisição (JSON):**
         *   `codigos` (lista de inteiros, obrigatório): Lista de códigos de composições a serem analisadas. Ex: `[92711, 88307]`.
@@ -141,7 +143,7 @@ X-API-KEY: sua_chave_de_api_aqui
         *   `codigo` (inteiro, obrigatório): O código da composição.
     *   **Parâmetros de Query:**
         *   `uf` (string, obrigatório): Unidade Federativa (UF). Ex: `SP`.
-        *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`. Ex: `2025-09`.
+        *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`.
         *   `regime` (string, opcional): Regime de custo/preço. Padrão: `NAO_DESONERADO`.
         *   `top_n` (inteiro, opcional): Número de principais insumos a serem retornados. Padrão: `5`.
     *   **Exemplo de `curl`:**
