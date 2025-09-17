@@ -1,5 +1,4 @@
 # docker-compose.yml
-# VERSÃO FINAL CORRIGIDA
 
 services:
   db:
@@ -22,7 +21,7 @@ services:
     networks:
       - sinapi-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d sinapi"]
+      test: ["CMD-SHELL", "pg_isready -U kong -d kong"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,6 +30,8 @@ services:
     container_name: sinapi_api
     build: .
     env_file: .env
+    volumes:
+      - ./autosinapi_downloads:/app/downloads
     depends_on:
       db:
         condition: service_healthy
@@ -50,6 +51,8 @@ services:
     container_name: sinapi_worker
     command: celery -A api.tasks.celery_app worker --loglevel=info
     env_file: .env
+    volumes:
+      - ./autosinapi_downloads:/app/downloads
     depends_on:
       - redis
       - db
@@ -58,7 +61,8 @@ services:
       - sinapi-net
 
   kong-migrations:
-    image: kong:3.4
+    #image: kong:3.4
+    build: ./kong/
     container_name: kong_migrations
     env_file: .env
     environment:
@@ -67,9 +71,18 @@ services:
       - KONG_PG_HOST=db
       - KONG_PG_USER=${KONG_PG_USER}
       - KONG_PG_PASSWORD=${KONG_PG_PASSWORD}
-    # ---- CORREÇÃO CRÍTICA AQUI ----
-    # Usa o comando 'config db_import' que é compatível com Kong 3.4
-    command: sh -c "kong migrations bootstrap && kong config db_import /usr/local/kong/declarative/kong.yml || sleep 3600"
+    command: >
+      sh -c "
+        echo 'Waiting for PostgreSQL user \"kong\" to be created...';
+        until pg_isready -h db -U ${KONG_PG_USER} -d kong;
+        do
+          echo 'Waiting for database...';
+          sleep 2;
+        done;
+        echo 'User \"kong\" is ready. Resetting and running Kong migrations...';
+        kong migrations reset -y && kong migrations bootstrap && kong config db_import /usr/local/kong/declarative/kong.yml || sleep 3600
+        #kong migrations bootstrap --vv
+      "
     depends_on:
       db:
         condition: service_healthy
@@ -80,7 +93,8 @@ services:
       - ./kong:/usr/local/kong/declarative
 
   kong:
-    image: kong:3.4
+    #image: kong:3.4
+    build: ./kong/
     container_name: sinapi_gateway
     env_file: .env
     environment:
