@@ -72,8 +72,8 @@ Tenha sua própria instância da API, com banco de dados e toda a infraestrutura
     curl -X POST http://localhost:8001/consumers/meu-usuario/key-auth/
 
     # 3. Faça sua primeira consulta! (substitua SUA_CHAVE_AQUI)
-    curl -X GET "http://localhost:8000/api/v1/ufs/sp/municipios" \
-      -H "apikey: SUA_CHAVE_AQUI"
+    curl -X GET "http://localhost:8000/" \
+      -H "X-API-KEY: SUA_CHAVE_AQUI"
     ```
     **Pronto!** Explore todos os outros endpoints na documentação interativa em [http://localhost:8000/docs](http://localhost:8000/docs).
 
