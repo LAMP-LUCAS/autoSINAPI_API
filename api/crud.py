@@ -98,27 +98,50 @@ def search_composicoes_by_descricao(
 ) -> List[dict]:
     """
     Busca composições por uma string em sua descrição, retornando os custos
-    para um contexto específico.
+    para um contexto específico. A busca é feita por palavras-chave independentes.
     """
-    query = text(f"""
+    # 1. Quebra a string de busca em palavras individuais.
+    search_words = q.split()
+    
+    # 2. Cria uma cláusula WHERE dinâmica com um ILIKE para cada palavra.
+    #    Ex: se q="CONCRETO BOMBEADO", isto cria: "c.descricao ILIKE :word0 AND c.descricao ILIKE :word1"
+    conditions = [f"c.descricao ILIKE :word{i}" for i in range(len(search_words))]
+    where_descricao_clause = " AND ".join(conditions)
+
+    # 3. Monta o dicionário de parâmetros dinamicamente para as palavras de busca.
+    #    Ex: {"word0": "%CONCRETO%", "word1": "%BOMBEADO%"}
+    params = {f"word{i}": f"%{word}%" for i, word in enumerate(search_words)}
+
+    # 4. Adiciona os outros parâmetros fixos ao dicionário.
+    params.update({
+        "uf": uf.upper(),
+        "data_referencia": data_referencia,
+        "regime": regime.upper(),
+        "status": settings.DEFAULT_ITEM_STATUS,
+        "skip": skip,
+        "limit": limit
+    })
+
+    # 5. Monta a query final usando a cláusula WHERE dinâmica.
+    query_sql = f"""
         SELECT
             c.codigo, c.descricao, c.unidade, p.custo_total
         FROM {settings.TABLE_COMPOSICOES} AS c
         JOIN {settings.TABLE_CUSTOS_COMPOSICOES} AS p ON c.codigo = p.composicao_codigo
-        WHERE c.descricao ILIKE :query
-          AND c.status = :status
-          AND p.uf = :uf
-          AND TO_CHAR(p.data_referencia, 'YYYY-MM') = :data_referencia
-          AND p.regime = :regime
-        ORDER BY c.descricao OFFSET :skip LIMIT :limit
-    """)
-    result = db.execute(query, {
-        "query": f"%{q}%", "uf": uf.upper(), "data_referencia": data_referencia,
-        "regime": regime.upper(), "status": settings.DEFAULT_ITEM_STATUS,
-        "skip": skip, "limit": limit
-    }).fetchall()
+        WHERE 
+            {where_descricao_clause}  -- << A MUDANÇA ESTÁ AQUI
+            AND c.status = :status
+            AND p.uf = :uf
+            AND TO_CHAR(p.data_referencia, 'YYYY-MM') = :data_referencia
+            AND p.regime = :regime
+        ORDER BY c.descricao 
+        OFFSET :skip 
+        LIMIT :limit
+    """
+    
+    query = text(query_sql)
+    result = db.execute(query, params).fetchall()
     return result
-
 # --- Seção 2: Funções de Análise e Business Intelligence (BI) ---
 
 def get_composicao_bom(
