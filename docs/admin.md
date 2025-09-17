@@ -78,6 +78,7 @@ curl -X DELETE http://localhost:8001/consumers/meu-usuario/key-auth/{key_id}
 
 Para mais detalhes e outras operações, consulte a [documentação oficial da Admin API do Kong](https://docs.konghq.com/gateway/latest/admin-api/).
 
+
 ## 3. Outras Tarefas de Gerenciamento
 
 Além da população do banco de dados, a principal tarefa de gerenciamento exposta diretamente pela AutoSINAPI API é a que foi detalhada na Seção 1.2. Outras tarefas de gerenciamento de API, como controle de acesso, limitação de taxa e monitoramento, são configuradas e gerenciadas através do Kong Gateway.

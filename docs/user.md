@@ -42,6 +42,7 @@ X-API-KEY: sua_chave_de_api_aqui
         *   `uf` (string, obrigatório): Unidade Federativa (UF). Ex: `SP`.
         *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`.
         *   `regime` (string, opcional): Regime de preço. Valores possíveis: `NAO_DESONERADO` (padrão), `DESONERADO`.
+
     *   **Exemplo de `curl`:**
         ```bash
         curl -X GET "http://localhost:8000/insumos/43430?uf=SP&data_referencia=2025-09" -H "X-API-KEY: sua_chave_de_api_aqui"
@@ -72,7 +73,7 @@ X-API-KEY: sua_chave_de_api_aqui
     *   **Parâmetros de Query:**
         *   `uf` (string, obrigatório): Unidade Federativa (UF). Ex: `SP`.
         *   `data_referencia` (string, obrigatório): Data de referência no formato `AAAA-MM`.
-        *   `regime` (string, opcional): Regime de custo. Padrão: `NAO_DESONERADO`.
+        *   `regime` (string, opcional): Regime de custo. Padrão: `NAO_DESONERADO`.        
     *   **Exemplo de `curl`:**
         ```bash
         curl -X GET "http://localhost:8000/composicoes/92711?uf=SP&data_referencia=2025-09" -H "X-API-KEY: sua_chave_de_api_aqui"
