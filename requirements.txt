@@ -9,5 +9,6 @@ redis
 pydantic-settings
 pandas
 python-dateutil
+
 # Instala o toolkit autoSINAPI diretamente do repositório Git
-git+https://github.com/LAMP-LUCAS/AutoSINAPI.git@develop
+git+https://github.com/LAMP-LUCAS/AutoSINAPI.git
