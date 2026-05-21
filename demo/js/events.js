@@ -1,7 +1,7 @@
 /** @file Inicialização de event listeners — wiring entre DOM e módulos */
 import { $, $$ } from './dom.js';
 
-export function createEvents(dom, { search, abc, compare, theme, toast, state, utils, modal }) {
+export function createEvents(dom, { search, abc, compare, theme, toast, state, utils, modal, admin }) {
   function closeMobileMenu() {
     document.body.classList.remove('menu-open');
     dom.mobileMenu?.classList.add('hidden');
@@ -74,6 +74,7 @@ export function createEvents(dom, { search, abc, compare, theme, toast, state, u
       dom.abcBtn?.addEventListener('click', () => abc.perform());
       dom.btnAbcGrid?.addEventListener('click', () => abc.setView('grid'));
       dom.btnAbcList?.addEventListener('click', () => abc.setView('table'));
+      dom.abcToggleGroup?.addEventListener('click', () => abc.toggleGroupBy());
     },
 
     compare() {
@@ -110,6 +111,12 @@ export function createEvents(dom, { search, abc, compare, theme, toast, state, u
           }
         });
       });
+    },
+
+    admin() {
+      if (!admin) return;
+      admin.initVisibility();
+      dom.adminForm?.addEventListener('submit', e => admin.triggerPopulation(e));
     },
 
     modal() {

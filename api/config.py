@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     def VIEW_COMPOSICAO_ITENS(self) -> str:
         return get_sandbox_table_name("vw_composicao_itens_unificados")
 
+    @property
+    def TABLE_MANUTENCOES_HISTORICO(self) -> str:
+        return get_sandbox_table_name("manutencoes_historico")
+
     # --- Configurações de Cache ---
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379

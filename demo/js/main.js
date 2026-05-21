@@ -14,6 +14,7 @@ import { createSearch } from './modules/search.js';
 import { createABC } from './modules/abc.js';
 import { createCompare } from './modules/compare.js';
 import { createModal } from './modules/modal.js';
+import { createAdmin } from './modules/admin.js';
 import { createEvents } from './events.js';
 
 // ── Injeção de Dependências ──────────────────
@@ -27,7 +28,8 @@ const search = createSearch(CONFIG, state, dom, utils, api, toast);
 const abc = createABC(CONFIG, state, dom, utils, api, toast, theme);
 const compare = createCompare(CONFIG, state, dom, utils, api, toast);
 const modal = createModal(CONFIG, state, dom, utils, api, toast);
-const events = createEvents(dom, { search, abc, compare, theme, toast, state, utils, modal });
+const admin = createAdmin(CONFIG, state, dom, utils, api, toast);
+const events = createEvents(dom, { search, abc, compare, theme, toast, state, utils, modal, admin });
 
 // ── Inicialização ────────────────────────────
 async function init() {
@@ -47,6 +49,6 @@ async function init() {
 
 // ── Testabilidade (dev apenas) ───────────────
 if (['localhost', '127.0.0.1'].includes(window.location.hostname) || window.location.hostname.includes('lamp.local')) {
-  window.AutoSINAPI = { state, search, abc, compare, theme, api, toast, utils, modal };
+  window.AutoSINAPI = { state, search, abc, compare, theme, api, toast, utils, modal, admin };
   console.log('[AutoSINAPI] Test interface: window.AutoSINAPI');
 }

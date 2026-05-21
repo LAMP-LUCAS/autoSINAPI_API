@@ -180,6 +180,26 @@ export function createModal(config, state, dom, utils, api, toast) {
         chartContainer.innerHTML = '<p class="empty-state">Sem dados históricos disponíveis.</p>';
       }
 
+      // Fetch Maintenance History (1.7)
+      if (dom.maintenanceSection) dom.maintenanceSection.classList.add('hidden');
+      if (dom.maintenanceContainer) dom.maintenanceContainer.innerHTML = '';
+      const maintUrl = `${config.API_BASE}/bi/item/${tipoSingular}/${encodeURIComponent(codigo)}/manutencoes`;
+      const maintData = await api.request(maintUrl).catch((err) => {
+        if (err.message !== '404') console.warn('[Modal] Maintenance fetch failed:', err);
+        return null;
+      });
+
+      if (maintData && maintData.length > 0 && dom.maintenanceSection && dom.maintenanceContainer) {
+        dom.maintenanceSection.classList.remove('hidden');
+        dom.maintenanceContainer.innerHTML = maintData.map(m => `
+          <div class="maint-item">
+            <span class="maint-date">${utils.escapeHtml(m.data_referencia)}</span>
+            <span class="maint-type ${m.tipo_manutencao === 'ATIVACAO' ? 'maint-active' : 'maint-inactive'}">${utils.escapeHtml(m.tipo_manutencao)}</span>
+            <span class="maint-desc">${utils.escapeHtml(m.descricao_item || '')}</span>
+          </div>
+        `).join('');
+      }
+
       // Composition-specific data
       if (tipoSingular === 'composicao') {
         // Fetch BOM

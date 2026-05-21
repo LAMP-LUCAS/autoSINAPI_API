@@ -86,6 +86,9 @@ const AutoSINAPITests = (() => {
       // Sprint 1a: New modal elements
       'bomSearchInput', 'btnExportChart', 'bomCostComparison',
       'modalStatusBadge', 'modalClassificacao', 'modalGrupo',
+      // Sprint 1b: New elements
+      'abcToggleGroup', 'maintenanceSection', 'maintenanceContainer',
+      'adminSection', 'adminForm', 'adminYear', 'adminMonth', 'adminUf',
     ];
 
     ids.forEach(id => {
@@ -185,13 +188,32 @@ const AutoSINAPITests = (() => {
     // Test 8: Search setSearchType works via updateFilterVisibility chain
     if (search) {
       assertTruthy(search.setSearchType, 'search.setSearchType está definido');
-      // Simulate toggling search type
       search.setSearchType('composicoes');
       const classificacaoCol = document.getElementById('classificacaoFilterCol');
       if (classificacaoCol) {
         assertEqual(classificacaoCol.style.display, 'none', 'classificacaoFilterCol fica oculto ao buscar composições');
       }
       search.setSearchType('insumos');
+    }
+
+    // Test 9: ABC group toggle
+    if (abc) {
+      assertTruthy(abc.toggleGroupBy, 'abc.toggleGroupBy está definido');
+    }
+
+    // Test 10: Admin module
+    const { admin } = window.AutoSINAPI;
+    if (admin) {
+      assertTruthy(admin.initVisibility, 'admin.initVisibility está definido');
+      assertTruthy(admin.triggerPopulation, 'admin.triggerPopulation está definido');
+      assertTruthy(admin.stopPolling, 'admin.stopPolling está definido');
+    }
+
+    // Test 11: Modal Sprint 1b features
+    if (modal) {
+      // exportChart and filterBom tested in Sprint 1a
+      assertTruthy(modal.show, 'modal.show está definido');
+    }
 
     console.log(`\n✅ E2E Tests: ${results.passed} passou, ${results.failed} falhou\n`);
   }
@@ -239,6 +261,24 @@ MODAL (SPRINT 1a):
 ☐ Busca no BOM filtra cards e tabela em tempo real
 ☐ Botão "Exportar Gráfico" baixa PNG do histórico de preços
 ☐ Items inativos mostram badge "INATIVO" no modal
+
+MODAL (SPRINT 1b):
+☐ Abrir modal de item com histórico de manutenção mostra timeline
+☐ Manutenções ATIVACAO aparecem em verde e DESATIVACAO em vermelho
+☐ Seção de manutenção fica oculta se não houver dados
+
+CURVA ABC (SPRINT 1b):
+☐ Botão "Agrupar por Classificação" alterna entre modos
+☐ Modo agrupado mostra categorias no gráfico horizontal
+☐ Modo agrupado mostra grid cards com categoria, total, % e qtd de insumos
+☐ Tabela no modo agrupado mostra classificação, qtd insumos, total e %
+
+ADMIN (SPRINT 1b):
+☐ Acessar via ?admin=true no URL
+☐ Formulário com ano, mês, UF aparece
+☐ Clicar "Iniciar Carga" dispara POST /admin/populate-database
+☐ Polling de status funciona (task status polling a cada 3s)
+☐ Resultado da tarefa aparece ao final
 
 RESPONSIVIDADE:
 ☐ Teste em 320px (smartwatch)

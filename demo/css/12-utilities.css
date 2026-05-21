@@ -342,3 +342,112 @@
     flex-direction: column;
     gap: 0.4rem;
 }
+
+/* ABC Group Toggle Button */
+.btn-toggle-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: var(--bg-card);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-family: inherit;
+    min-height: 44px;
+    transition: all var(--transition-fast);
+}
+.btn-toggle-group:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+.btn-toggle-group.active {
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+/* Maintenance Timeline */
+.maintenance-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.maint-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.4rem 0.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--bg-alt);
+    font-size: 0.8rem;
+}
+.maint-date {
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    min-width: 5rem;
+}
+.maint-type {
+    display: inline-flex;
+    padding: 0.1rem 0.5rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.maint-active {
+    background: color-mix(in srgb, var(--success) 15%, transparent);
+    color: var(--success);
+}
+.maint-inactive {
+    background: color-mix(in srgb, var(--error) 15%, transparent);
+    color: var(--error);
+}
+.maint-desc {
+    flex: 1;
+    color: var(--text-main);
+    font-size: 0.75rem;
+}
+
+/* Admin Section */
+.admin-section {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 3rem 2rem;
+}
+.admin-form {
+    background: var(--bg-card);
+    padding: 2rem;
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border);
+}
+.admin-task-status {
+    margin-top: 1.5rem;
+    padding: 1.5rem;
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+}
+.admin-task-result {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    background: var(--bg-alt);
+    border-radius: var(--radius-sm);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+}
+#adminPollStatus {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-main);
+}

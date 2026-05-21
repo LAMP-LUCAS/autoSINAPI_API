@@ -78,3 +78,24 @@ class HistoricoCusto(BaseModel):
 
     class Config:
         from_attributes = True
+
+class HistoricoManutencao(BaseModel):
+    """Schema para um registro de manutenção (ativação/desativação) de item."""
+    item_codigo: int
+    tipo_item: str
+    data_referencia: str
+    tipo_manutencao: str
+    descricao_item: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class AbcPorClassificacao(BaseModel):
+    """Schema para análise ABC agrupada por classificação de insumo."""
+    classificacao: str
+    custo_total: float
+    percentual: float
+    total_insumos: int
+
+    class Config:
+        from_attributes = True

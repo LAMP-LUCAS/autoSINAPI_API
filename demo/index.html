@@ -281,6 +281,10 @@
                 <div class="results-toolbar">
                     <span class="results-count" id="abcResultsCount" aria-live="polite">Resultados da Curva ABC</span>
                     <div class="toolbar-controls">
+                        <button type="button" id="abcToggleGroup" class="btn-toggle-group" aria-label="Agrupar por classificação" title="Agrupar por classificação">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                            Agrupar por Classificação
+                        </button>
                         <div class="view-toggles" role="group" aria-label="Alternar visualização da Curva ABC">
                             <button id="btnAbcGrid" class="btn-toggle active" aria-label="Visualização em grid" aria-pressed="true">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
@@ -428,6 +432,41 @@
         </section>
     </main>
 
+    <!-- Admin Section (hidden, visible via ?admin=true) -->
+    <section id="adminSection" class="tool-section hidden admin-section" aria-labelledby="admin-title">
+        <div class="section-header">
+            <h2 id="admin-title" class="section-title">Administração — População do Banco</h2>
+            <p class="section-subtitle">Disparar carga de dados SINAPI para um mês/ano/UF específico.</p>
+        </div>
+        <form id="adminForm" class="admin-form">
+            <div class="search-bar-row">
+                <div class="filter-col">
+                    <label for="adminYear">Ano</label>
+                    <input type="number" id="adminYear" placeholder="Ex: 2025" min="2000" max="2030" aria-label="Ano">
+                </div>
+                <div class="filter-col">
+                    <label for="adminMonth">Mês</label>
+                    <input type="number" id="adminMonth" placeholder="Ex: 1-12" min="1" max="12" aria-label="Mês">
+                </div>
+                <div class="filter-col">
+                    <label for="adminUf">UF</label>
+                    <select id="adminUf" aria-label="Unidade Federativa"><option value="">Todas</option></select>
+                </div>
+                <button type="submit" id="adminBtn" style="margin-top: 1.5rem;" aria-label="Iniciar carga">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span>Iniciar Carga</span>
+                </button>
+            </div>
+        </form>
+        <div id="adminLoader" class="loader hidden" role="status" aria-label="Iniciando carga">
+            <span class="loader-text">Iniciando tarefa...</span>
+        </div>
+        <div id="adminTaskStatus" class="admin-task-status hidden">
+            <p id="adminPollStatus">Status: Aguardando...</p>
+            <pre id="adminTaskResult" class="admin-task-result"></pre>
+        </div>
+    </section>
+
     <!-- Footer -->
     <footer>
         <div class="footer-content">
@@ -511,6 +550,11 @@
                         <div class="modal-chart-container">
                             <canvas id="historyChart"></canvas>
                         </div>
+                    </div>
+
+                    <div class="modal-card maintenance-card hidden" id="maintenanceSection">
+                        <h4>Histórico de Manutenção</h4>
+                        <div id="maintenanceContainer" class="maintenance-timeline"></div>
                     </div>
 
                     <div class="modal-card manhours-card" id="manHoursSection">

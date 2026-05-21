@@ -305,3 +305,37 @@ def get_item_cost_history(
     if not history:
         raise HTTPException(status_code=404, detail="Não foram encontrados dados históricos para o item e filtros especificados.")
     return history
+
+@app.get("/api/v1/public/bi/item/{tipo_item}/{codigo}/manutencoes", response_model=List[schemas.HistoricoManutencao], tags=["Business Intelligence"])
+def get_item_maintenance_history(
+    tipo_item: str = Path(..., description="Tipo do item: 'insumo' ou 'composicao'"),
+    codigo: int = Path(..., description="Código do item."),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna o histórico de manutenção (ativações/desativações) de um item.
+    """
+    if tipo_item not in ['insumo', 'composicao']:
+        raise HTTPException(status_code=400, detail="Tipo de item inválido. Use 'insumo' ou 'composicao'.")
+    manutencoes = crud.get_manutencoes_historico(db, codigo=codigo, tipo_item=tipo_item)
+    if not manutencoes:
+        raise HTTPException(status_code=404, detail="Nenhum histórico de manutenção encontrado para este item.")
+    return manutencoes
+
+@app.post("/api/v1/public/bi/curva-abc/por-classificacao", response_model=List[schemas.AbcPorClassificacao], tags=["Business Intelligence"])
+def get_abc_by_classificacao(
+    codigos: List[int] = Body(..., description="Lista de códigos de composições a serem analisadas.", example=[92711, 88307]),
+    uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
+    data_referencia: str = Query(..., description="Data de referência no formato AAAA-MM. Ex: 2025-09"),
+    regime: str = Query("NAO_DESONERADO", description="Regime de preço."),
+    db: Session = Depends(get_db)
+):
+    """
+    Calcula a Curva ABC agrupada por classificação de insumo,
+    agregando todos os insumos de mesma categoria para mostrar
+    quais classes de materiais dominam o custo.
+    """
+    result = crud.get_abc_by_classificacao(db, codigos=codigos, uf=uf, data_referencia=data_referencia, regime=regime)
+    if not result:
+        raise HTTPException(status_code=404, detail="Nenhuma classificação encontrada para as composições e filtros especificados.")
+    return result

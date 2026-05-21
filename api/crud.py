@@ -249,3 +249,57 @@ def get_candidatos_otimizacao(
     insumos = [item for item in bom_data if item.get('tipo_item') == 'INSUMO']
     insumos.sort(key=lambda x: float(x.get('custo_impacto_total') or 0), reverse=True)
     return insumos[:top_n]
+
+@cache_result(ttl=86400)
+def get_manutencoes_historico(db: Session, codigo: int, tipo_item: str) -> List[dict]:
+    """
+    Retorna o histórico de manutenção (ativações/desativações) de um item.
+    """
+    query = text(f"""
+        SELECT item_codigo, tipo_item,
+               TO_CHAR(data_referencia, 'YYYY-MM') as data_referencia,
+               tipo_manutencao, descricao_item
+        FROM {settings.TABLE_MANUTENCOES_HISTORICO}
+        WHERE item_codigo = :codigo AND tipo_item = :tipo_item
+        ORDER BY data_referencia DESC
+    """)
+    result = db.execute(query, {"codigo": codigo, "tipo_item": tipo_item}).fetchall()
+    return [dict(r._mapping) for r in result]
+
+@cache_result(ttl=86400)
+def get_abc_by_classificacao(
+    db: Session, codigos: List[int], uf: str, data_referencia: str, regime: str
+) -> List[dict]:
+    """
+    Calcula a Curva ABC agrupada por classificação de insumo,
+    agregando todos os insumos de mesma categoria.
+    """
+    start_date, end_date = _get_date_range(data_referencia)
+    query = text(f"""
+    WITH RECURSIVE composicao_completa (item_codigo, tipo_item, coeficiente_total) AS (
+        SELECT codigo, 'COMPOSICAO', 1.0 FROM {settings.TABLE_COMPOSICOES} WHERE codigo IN :codigos
+        UNION ALL
+        SELECT vis.item_codigo, vis.tipo_item, rec.coeficiente_total * vis.coeficiente
+        FROM {settings.VIEW_COMPOSICAO_ITENS} as vis
+        JOIN composicao_completa as rec ON vis.composicao_pai_codigo = rec.item_codigo
+        WHERE rec.tipo_item = 'COMPOSICAO'
+    )
+    SELECT i.classificacao,
+           SUM(cc.coeficiente_total * p.preco_mediano) as custo_total,
+           COUNT(DISTINCT i.codigo) as total_insumos
+    FROM composicao_completa cc
+    JOIN {settings.TABLE_INSUMOS} i ON cc.item_codigo = i.codigo
+    JOIN {settings.TABLE_PRECOS_INSUMOS} p ON i.codigo = p.insumo_codigo
+    WHERE cc.tipo_item = 'INSUMO' AND p.uf = :uf
+      AND p.data_referencia >= :start_date AND p.data_referencia <= :end_date AND p.regime = :regime
+      AND i.classificacao IS NOT NULL AND i.classificacao != ''
+    GROUP BY i.classificacao
+    HAVING SUM(cc.coeficiente_total * p.preco_mediano) > 0
+    ORDER BY custo_total DESC;
+    """)
+    result = db.execute(query, {"codigos": tuple(codigos), "uf": uf.upper(), "start_date": start_date, "end_date": end_date, "regime": regime.upper()}).fetchall()
+    categorias = [dict(r._mapping) for r in result]
+    total_geral = sum(float(x['custo_total'] or 0) for x in categorias)
+    for item in categorias:
+        item['percentual'] = (float(item['custo_total'] or 0) / total_geral * 100) if total_geral > 0 else 0
+    return categorias
