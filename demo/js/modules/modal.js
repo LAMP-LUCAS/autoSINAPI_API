@@ -225,30 +225,55 @@ export function createModal(config, state, dom, utils, api, toast) {
           }, {});
 
           const rows = Object.values(consolidated).sort((a, b) => (a.custo_impacto_total || 0) - (b.custo_impacto_total || 0)).reverse();
-          const totalBomCost = rows.reduce((sum, r) => sum + (r.custo_impacto_total || 0), 0);
 
           // Cache for search
           bomDataCache = rows;
 
-          // BOM Cost Comparison (1.4)
+          // Total BOM (all items) for percentage reference in tree display
+          const totalBomCost = rows.reduce((sum, r) => sum + (r.custo_impacto_total || 0), 0);
+
+          // BOM Cost Comparison (1.4) — only leaf INSUMO items to avoid vertical duplication
           if (dom.bomCostComparison && itemData.custo_total != null) {
             const oficial = Number(itemData.custo_total) || 0;
-            const delta = oficial > 0 ? ((totalBomCost - oficial) / oficial * 100) : 0;
-            const deltaAbs = Math.abs(delta);
-            const deltaClass = deltaAbs > 5 ? 'delta-high' : deltaAbs > 2 ? 'delta-mid' : 'delta-low';
-            const deltaSign = delta >= 0 ? '+' : '';
+
+            // Filter to leaf insumos only (skip sub-composicoes to avoid double-count)
+            const insumos = rows.filter(r => r.tipo_item === 'INSUMO');
+            const totalInsumos = insumos.reduce((sum, r) => sum + (r.custo_impacto_total || 0), 0);
+
+            // Breakdown by category
+            const maoDeObra = insumos.filter(r => r.unidade === 'H')
+              .reduce((sum, r) => sum + (r.custo_impacto_total || 0), 0);
+            const equipamento = insumos.filter(r => r.unidade === 'CHP')
+              .reduce((sum, r) => sum + (r.custo_impacto_total || 0), 0);
+            const material = totalInsumos - maoDeObra - equipamento;
+
+            const pct = (v) => oficial > 0 ? ((v / oficial) * 100).toFixed(1) : '0.0';
+
             dom.bomCostComparison.innerHTML = `
-              <div class="bom-cost-item">
-                <span class="bom-cost-label">Custo Total BOM</span>
-                <span class="bom-cost-value">${utils.formatCurrency(totalBomCost)}</span>
+              <div class="bom-cost-item bom-cost-header">
+                <span class="bom-cost-label">Insumos</span>
+                <span class="bom-cost-value">${utils.formatCurrency(totalInsumos)}</span>
+                <span class="bom-cost-pct">${pct(totalInsumos)}%</span>
               </div>
-              <div class="bom-cost-item">
+              <div class="bom-cost-item bom-cost-labor">
+                <span class="bom-cost-label">Mão de Obra</span>
+                <span class="bom-cost-value">${utils.formatCurrency(maoDeObra)}</span>
+                <span class="bom-cost-pct">${pct(maoDeObra)}%</span>
+              </div>
+              <div class="bom-cost-item bom-cost-material">
+                <span class="bom-cost-label">Material</span>
+                <span class="bom-cost-value">${utils.formatCurrency(material)}</span>
+                <span class="bom-cost-pct">${pct(material)}%</span>
+              </div>
+              <div class="bom-cost-item bom-cost-equip">
+                <span class="bom-cost-label">Equipamento</span>
+                <span class="bom-cost-value">${utils.formatCurrency(equipamento)}</span>
+                <span class="bom-cost-pct">${pct(equipamento)}%</span>
+              </div>
+              <div class="bom-cost-item bom-cost-oficial">
                 <span class="bom-cost-label">Custo Oficial</span>
                 <span class="bom-cost-value">${utils.formatCurrency(oficial)}</span>
-              </div>
-              <div class="bom-cost-item bom-cost-delta ${deltaClass}">
-                <span class="bom-cost-label">Diferença</span>
-                <span class="bom-cost-value">${deltaSign}${delta.toFixed(1)}%</span>
+                <span class="bom-cost-pct">100%</span>
               </div>
             `;
           }
