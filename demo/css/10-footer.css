@@ -1,0 +1,118 @@
+/* ========== FOOTER ========== */
+footer {
+    background: #0f172a;
+    color: white;
+    padding: 5rem 2rem;
+    border-top: 4px solid var(--primary);
+    margin-top: 6rem;
+    position: relative;
+    z-index: 10;
+}
+
+.footer-content {
+    max-width: var(--container-max);
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 4rem;
+}
+
+.footer-brand {
+    flex: 2;
+    min-width: 300px;
+    text-align: left;
+}
+
+.footer-brand h2 {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+    font-weight: 900;
+}
+.footer-brand h2 span { color: var(--primary); }
+
+.footer-brand p {
+    color: #94a3b8;
+    font-size: 1rem;
+    max-width: 400px;
+    line-height: 1.6;
+}
+
+.footer-links, .footer-meta {
+    flex: 1;
+    min-width: 200px;
+}
+
+.footer-links h4, .footer-meta h4 {
+    font-size: 0.9rem;
+    font-weight: 800;
+    margin-bottom: 1.5rem;
+    color: white;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.footer-link {
+    display: block;
+    color: #94a3b8;
+    text-decoration: none;
+    font-size: 0.9rem;
+    padding: 0.5rem 0;
+    transition: color var(--transition-fast);
+}
+.footer-link:hover { color: var(--primary); }
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+    padding: 0.6rem 1.2rem;
+    border-radius: var(--radius-full);
+    font-weight: 700;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    background: var(--success);
+    border-radius: 50%;
+    box-shadow: 0 0 12px var(--success);
+    animation: pulse 2s infinite;
+}
+
+.footer-tier-info {
+    font-size: 0.85rem;
+    color: #64748b;
+    margin-top: 1rem;
+}
+
+.footer-tech-stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+}
+
+.footer-tech-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.3rem 0.75rem;
+    border-radius: var(--radius-full);
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+}
+
+@media (max-width: 768px) {
+    .footer-content { flex-direction: column; align-items: center; text-align: center; }
+    .footer-brand { text-align: center; }
+    .footer-brand p { margin-left: auto; margin-right: auto; }
+    .footer-tech-stack { justify-content: center; }
+    .footer-meta { display: flex; flex-direction: column; align-items: center; }
+}

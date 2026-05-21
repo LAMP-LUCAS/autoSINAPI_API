@@ -1,0 +1,84 @@
+/* ========== CHARTS ========== */
+.chart-container {
+    position: relative;
+    height: 350px;
+    width: 100%;
+    margin-bottom: 2rem;
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    padding: 1.5rem;
+    overflow: hidden;
+}
+.chart-container canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* ========== ABC RESULTS ========== */
+.abc-results, .compare-results {
+    margin-top: 2rem;
+    animation: slideUp 0.5s ease-out;
+}
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.abc-table-container {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    overflow: hidden;
+}
+.table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+}
+.table-header h4 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+.table-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.25rem 0.6rem;
+    border-radius: var(--radius-full);
+    background: var(--primary-light);
+    color: var(--primary);
+}
+
+.data-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    white-space: nowrap;
+}
+.data-table th {
+    background: var(--bg-alt);
+    padding: 1rem 1.25rem;
+    text-align: left;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    font-weight: 800;
+    color: var(--text-muted);
+    border-bottom: 2px solid var(--border);
+    position: sticky;
+    top: 0;
+}
+.data-table td {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    font-weight: 500;
+    color: var(--text-main);
+}
+.data-table tbody tr { transition: background var(--transition-fast); }
+.data-table tbody tr:hover { background: var(--primary-light); }
+

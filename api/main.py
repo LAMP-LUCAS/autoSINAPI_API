@@ -8,8 +8,12 @@ orquestrando as chamadas para as funções do módulo `crud` e utilizando os
 """
 
 import os
+import redis
+from celery.result import AsyncResult
+from .sandbox_utils import is_sandbox_mode
 from typing import List
 from fastapi import FastAPI, Depends, HTTPException, Query, Body, Path
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
@@ -27,25 +31,89 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Conexão direta com Redis para lock de tarefas (idempotência)
+redis_client = redis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=6379, db=0)
+
+@app.get("/api/v1/public/stats", tags=["Public"])
+def get_database_stats(db: Session = Depends(get_db)):
+    """
+    Retorna estatísticas de volumetria do banco de dados.
+    """
+    return crud.get_global_stats(db)
+
+@app.get("/api/v1/public/filters", tags=["Public"])
+def get_filters(db: Session = Depends(get_db)):
+    """
+    Retorna os filtros dinâmicos disponíveis no banco.
+    """
+    return crud.get_available_filters(db)
+
 # --- Endpoints de Administração ---
 
-@app.post("/admin/populate-database", status_code=202, tags=["Admin"])
-def trigger_database_population(year: int = Body(..., example=2025), month: int = Body(..., example=9)):
+@app.post("/api/v1/admin/populate-database", status_code=202, tags=["Admin"])
+def trigger_database_population(
+    year: int = Body(..., example=2025), 
+    month: int = Body(..., example=9),
+    state: str = Body("SP", example="SP", min_length=2, max_length=2)
+):
     """
-    Dispara a tarefa de download e população da base SINAPI para um mês/ano.
-    A tarefa roda em segundo plano (assíncrona).
+    Dispara a tarefa de download e população da base SINAPI para um mês/ano/UF.
+    A tarefa roda em segundo plano. Implementa trava (lock) para evitar duplicações.
     """
-    db_config = {
-        "host": os.getenv("POSTGRES_HOST", "db"),
-        "port": os.getenv("POSTGRES_PORT", 5432),
-        "database": os.getenv("POSTGRES_DB"),
-        "user": os.getenv("POSTGRES_USER"),
-        "password": os.getenv("POSTGRES_PASSWORD"),
-    }
-    sinapi_config = { "year": year, "month": month }
+    sandbox = is_sandbox_mode()
+    lock_key = f"lock:autosinapi:populate:{year}:{month:02d}:{state.upper()}:{'sandbox' if sandbox else 'prod'}"
 
-    task = populate_sinapi_task.delay(db_config, sinapi_config)
-    return {"message": "Tarefa de população da base de dados iniciada com sucesso.", "task_id": task.id}
+    if not redis_client.set(lock_key, "active", nx=True, ex=3600):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Já existe uma tarefa em andamento para {state.upper()} {month:02d}/{year}."
+        )
+
+    db_config = {
+        "host": os.getenv("POSTGRES_NAME", "autosinapi_db"),
+        "port": 5432,
+        "database": os.getenv("POSTGRES_DB", "sinapi"),
+        "user": os.getenv("POSTGRES_USER", "admin"),
+        "password": os.getenv("POSTGRES_PASSWORD", "admin"),
+    }
+    sinapi_config = { 
+        "year": year, 
+        "month": month, 
+        "state": state.upper(),
+        "type": "REFERENCIA"
+    }
+
+    try:
+        task = populate_sinapi_task.delay(db_config, sinapi_config)
+        redis_client.set(f"task:{lock_key}", task.id, ex=86400)
+        return {
+            "message": "Tarefa de população da base de dados iniciada com sucesso.",
+            "task_id": task.id,
+            "sandbox": sandbox
+        }
+    except Exception as e:
+        redis_client.delete(lock_key)
+        raise HTTPException(status_code=500, detail=f"Falha ao enfileirar tarefa: {str(e)}")
+
+@app.get("/api/v1/admin/tasks/{task_id}", tags=["Admin"])
+def get_task_status(task_id: str):
+    """Verifica o status e resultado de uma tarefa Celery."""
+    result = AsyncResult(task_id, app=populate_sinapi_task.app)
+    return {
+        "task_id": task_id,
+        "status": result.status,
+        "ready": result.ready(),
+        "result": str(result.result) if result.ready() else None
+    }
+
 
 
 @app.get("/", tags=["Root"])
@@ -55,7 +123,7 @@ def read_root():
 
 # --- Endpoints de Insumos ---
 
-@app.get("/insumos/{codigo}", response_model=schemas.Insumo, tags=["Insumos"])
+@app.get("/api/v1/public/insumos/{codigo}", response_model=schemas.Insumo, tags=["Insumos"])
 def read_insumo_by_codigo(
     codigo: int,
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
@@ -71,7 +139,7 @@ def read_insumo_by_codigo(
         raise HTTPException(status_code=404, detail="Insumo não encontrado para os filtros especificados.")
     return db_insumo
 
-@app.get("/insumos/", response_model=List[schemas.Insumo], tags=["Insumos"])
+@app.get("/api/v1/public/insumos", response_model=List[schemas.Insumo], tags=["Insumos"])
 def search_insumos(
     q: str = Query(..., min_length=3, description="Termo para buscar na descrição do insumo."),
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
@@ -88,7 +156,7 @@ def search_insumos(
 
 # --- Endpoints de Composições ---
 
-@app.get("/composicoes/{codigo}", response_model=schemas.Composicao, tags=["Composições"])
+@app.get("/api/v1/public/composicoes/{codigo}", response_model=schemas.Composicao, tags=["Composições"])
 def read_composicao_by_codigo(
     codigo: int,
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
@@ -104,7 +172,7 @@ def read_composicao_by_codigo(
         raise HTTPException(status_code=404, detail="Composição não encontrada para os filtros especificados.")
     return db_composicao
 
-@app.get("/composicoes/", response_model=List[schemas.Composicao], tags=["Composições"])
+@app.get("/api/v1/public/composicoes", response_model=List[schemas.Composicao], tags=["Composições"])
 def search_composicoes(
     q: str = Query(..., min_length=3, description="Termo para buscar na descrição da composição."),
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
@@ -121,7 +189,7 @@ def search_composicoes(
 
 # --- Endpoints de Business Intelligence (BI) ---
 
-@app.get("/bi/composicao/{codigo}/bom", response_model=List[schemas.ComposicaoBOMItem], tags=["Business Intelligence"])
+@app.get("/api/v1/public/bi/composicao/{codigo}/bom", response_model=List[schemas.ComposicaoBOMItem], tags=["Business Intelligence"])
 def get_composition_bom(
     codigo: int,
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
@@ -138,7 +206,7 @@ def get_composition_bom(
         raise HTTPException(status_code=404, detail="Composição não encontrada ou sem estrutura para os filtros especificados.")
     return bom_items
 
-@app.get("/bi/composicao/{codigo}/hora-homem", response_model=schemas.ComposicaoManHours, tags=["Business Intelligence"])
+@app.get("/api/v1/public/bi/composicao/{codigo}/hora-homem", response_model=schemas.ComposicaoManHours, tags=["Business Intelligence"])
 def get_composition_man_hours(codigo: int, db: Session = Depends(get_db)):
     """
     Calcula o total de Hora/Homem para uma composição, somando os coeficientes
@@ -149,7 +217,7 @@ def get_composition_man_hours(codigo: int, db: Session = Depends(get_db)):
         return schemas.ComposicaoManHours(total_hora_homem=0.0)
     return result
 
-@app.post("/bi/curva-abc", response_model=List[schemas.CurvaABCItem], tags=["Business Intelligence"])
+@app.post("/api/v1/public/bi/curva-abc", response_model=List[schemas.CurvaABCItem], tags=["Business Intelligence"])
 def get_abc_curve(
     codigos: List[int] = Body(..., description="Lista de códigos de composições a serem analisadas.", example=[92711, 88307]),
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
@@ -166,7 +234,7 @@ def get_abc_curve(
         raise HTTPException(status_code=404, detail="Nenhum insumo encontrado para as composições e filtros especificados.")
     return abc_curve
 
-@app.get("/bi/composicao/{codigo}/otimizar", response_model=List[schemas.ComposicaoBOMItem], tags=["Business Intelligence"])
+@app.get("/api/v1/public/bi/composicao/{codigo}/otimizar", response_model=List[schemas.ComposicaoBOMItem], tags=["Business Intelligence"])
 def get_optimization_candidates(
     codigo: int,
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
@@ -183,7 +251,7 @@ def get_optimization_candidates(
         raise HTTPException(status_code=404, detail="Não foi possível calcular os candidatos para otimização.")
     return candidates
 
-@app.get("/bi/item/{tipo_item}/{codigo}/historico", response_model=List[schemas.HistoricoCusto], tags=["Business Intelligence"])
+@app.get("/api/v1/public/bi/item/{tipo_item}/{codigo}/historico", response_model=List[schemas.HistoricoCusto], tags=["Business Intelligence"])
 def get_item_cost_history(
     tipo_item: str = Path(..., description="Tipo do item: 'insumo' ou 'composicao'"),
     codigo: int = Path(..., description="Código do item."),

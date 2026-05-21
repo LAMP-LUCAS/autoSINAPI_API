@@ -1,0 +1,98 @@
+/* ========================================
+   AutoSINAPI Demo - CSS
+   Mobile-first, Dark Mode, Full Responsive
+   ======================================== */
+
+:root {
+    --primary: #2563eb;
+    --primary-dark: #1e40af;
+    --primary-light: #eff6ff;
+    --primary-glow: rgba(37, 99, 235, 0.15);
+    --secondary: #475569;
+    --secondary-light: #94a3b8;
+    --bg-main: #f8fafc;
+    --bg-alt: #f1f5f9;
+    --bg-card: #ffffff;
+    --bg-input: #f8fafc;
+    --bg-hover: #f1f5f9;
+    --text-main: #0f172a;
+    --text-secondary: #334155;
+    --text-muted: #64748b;
+    --text-inverse: #ffffff;
+    --border: #e2e8f0;
+    --success: #10b981;
+    --success-light: #ecfdf5;
+    --warning: #f59e0b;
+    --warning-light: #fffbeb;
+    --error: #ef4444;
+    --error-light: #fef2f2;
+    --tag-insumo-bg: #e0f2fe;
+    --tag-insumo-text: #0369a1;
+    --tag-comp-bg: #fef3c7;
+    --tag-comp-text: #92400e;
+    --tag-a-bg: #dcfce7;
+    --tag-a-text: #166534;
+    --tag-b-bg: #fef9c3;
+    --tag-b-text: #854d0e;
+    --tag-c-bg: #fee2e2;
+    --tag-c-text: #991b1b;
+    --nav-height: 64px;
+    --container-max: 1400px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-2xl: 24px;
+    --radius-full: 9999px;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07);
+    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08);
+    --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.1);
+    --shadow-2xl: 0 25px 50px -12px rgba(0,0,0,0.25);
+    --transition-fast: 150ms cubic-bezier(0.4,0,0.2,1);
+    --transition-slow: 300ms cubic-bezier(0.4,0,0.2,1);
+    --z-sticky: 200;
+    --z-dropdown: 300;
+    --z-overlay: 400;
+    --z-modal: 500;
+    --z-toast: 600;
+    --z-skip: 700;
+}
+
+[data-theme="dark"] {
+    --primary: #3b82f6;
+    --primary-dark: #60a5fa;
+    --primary-light: #1e3a5f;
+    --primary-glow: rgba(59,130,246,0.25);
+    --secondary: #94a3b8;
+    --secondary-light: #64748b;
+    --bg-main: #0f172a;
+    --bg-alt: #1e293b;
+    --bg-card: #1e293b;
+    --bg-input: #334155;
+    --bg-hover: #334155;
+    --text-main: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --text-inverse: #0f172a;
+    --border: #334155;
+    --success-light: #064e3b;
+    --warning-light: #451a03;
+    --error-light: #450a0a;
+    --tag-insumo-bg: #0c4a6e;
+    --tag-insumo-text: #7dd3fc;
+    --tag-comp-bg: #713f12;
+    --tag-comp-text: #fde68a;
+    --tag-a-bg: #14532d;
+    --tag-a-text: #86efac;
+    --tag-b-bg: #713f12;
+    --tag-b-text: #fde047;
+    --tag-c-bg: #7f1d1d;
+    --tag-c-text: #fca5a5;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.4);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.4);
+    --shadow-xl: 0 20px 25px rgba(0,0,0,0.5);
+    --shadow-2xl: 0 25px 50px rgba(0,0,0,0.7);
+}
+

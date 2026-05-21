@@ -20,7 +20,13 @@ RUN apt-get update && \
 # Estágio 3: Cópia do código da aplicação
 COPY ./api /app/api
 
-# Estágio 4: Comando de execução
+# Estágio 4: Segurança e Execução
+RUN apt-get update && apt-get install -y wget procps --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/* && \
+    useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
 # Expõe a porta que o Uvicorn usará
 EXPOSE 8000
 # Inicia o servidor Uvicorn

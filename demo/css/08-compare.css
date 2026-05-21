@@ -1,0 +1,49 @@
+/* ========== COMPARE STATS ========== */
+.compare-item-name {
+    text-align: center;
+    font-size: clamp(1.1rem, 2vw, 1.5rem);
+    font-weight: 800;
+    color: var(--text-main);
+    margin-bottom: 1.5rem;
+}
+.compare-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+.compare-stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    transition: all var(--transition-fast);
+}
+.compare-stat-card:hover {
+    border-color: var(--primary);
+    box-shadow: var(--shadow-md);
+}
+.compare-stat-label {
+    font-size: 0.65rem;
+    font-weight: 800;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.compare-stat-value {
+    font-size: clamp(1.1rem, 2vw, 1.5rem);
+    font-weight: 900;
+    color: var(--primary);
+    font-variant-numeric: tabular-nums;
+}
+.compare-stat-uf {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+.compare-chart-container { height: 400px; }
+

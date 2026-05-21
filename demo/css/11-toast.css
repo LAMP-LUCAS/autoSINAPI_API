@@ -1,0 +1,21 @@
+/* ========== TOAST ========== */
+.toast {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translate(-50%, 150%);
+    background: var(--text-main);
+    color: var(--text-inverse);
+    padding: 0.85rem 2rem;
+    border-radius: var(--radius-full);
+    font-weight: 600;
+    font-size: 0.9rem;
+    box-shadow: var(--shadow-xl);
+    transition: transform 0.4s cubic-bezier(0.175,0.885,0.32,1.275);
+    z-index: var(--z-toast);
+    pointer-events: none;
+    max-width: 90vw;
+    text-align: center;
+}
+.toast.show { transform: translate(-50%, 0); }
+

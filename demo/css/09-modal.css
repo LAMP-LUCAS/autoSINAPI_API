@@ -1,0 +1,72 @@
+/* ========== MODAL ========== */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: var(--z-modal);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 1.5rem;
+}
+
+.modal-container {
+    background: var(--bg-card);
+    width: 90%;
+    max-width: 1400px;
+    height: 90vh;
+    border-radius: var(--radius-2xl);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: var(--shadow-2xl);
+    animation: modalSlideUp 0.3s ease-out;
+}
+
+.modal-header {
+    padding: 1.5rem 2.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-alt);
+    flex-shrink: 0;
+}
+
+.modal-body {
+    padding: 2.5rem;
+    overflow-y: auto;
+    flex: 1;
+    -webkit-overflow-scrolling: touch;
+}
+
+.modal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+    gap: 2.5rem;
+}
+
+.modal-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-chart-container {
+    position: relative;
+    height: 350px !important; /* Fixed height to prevent infinite growth */
+    width: 100%;
+    flex-shrink: 0;
+}
+
+.modal-description {
+    font-size: clamp(1.4rem, 2.5vw, 2rem);
+    font-weight: 800;
+    color: var(--text-main);
+    margin: 1rem 0;
+}

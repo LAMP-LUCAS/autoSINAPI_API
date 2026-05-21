@@ -123,6 +123,13 @@ services:
       timeout: 5s
       retries: 5
 
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token eyJhIjoiNmUwN2I1OGYzMWI1MTE3YTA4OTU0YTY5ZDQwNDVlZDEiLCJ0IjoiYTE5ZDQxOWQtYmE2Zi00OGJjLTg5ODQtYTNjN2Q5YWVhYTI2IiwicyI6Ik9XSTNNR0V6TkRNdE5EUTFNaTAwTUdabUxXSmlPR1V0TjJaaVlqVTFOV0ZpT1RFNCJ9
+    restart: unless-stopped
+    container_name: cloudflared_tunnel
+
+
 volumes:
   postgres_data:
     driver: local

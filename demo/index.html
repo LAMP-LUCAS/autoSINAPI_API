@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AutoSINAPI - API RESTful para dados de custos da construção civil. Dados atualizados do SINAPI/IBGE em milissegundos.">
+    <meta name="theme-color" content="#2563eb">
+    <title>AutoSINAPI | API de Custos da Construção Civil</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+
+    <!-- Skip Link para Acessibilidade -->
+    <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
+
+    <!-- Header Navigation -->
+    <header class="navbar" role="banner">
+        <div class="nav-container">
+            <div class="logo">
+                <h2>Auto<span>SINAPI</span></h2>
+                <span class="badge badge-free" aria-label="Free Tier API disponível">FREE TIER</span>
+            </div>
+            <nav class="nav-links" role="navigation" aria-label="Navegação principal">
+                <a href="#hero">Início</a>
+                <a href="#pesquisa">Pesquisa & BOM</a>
+                <a href="#bi">Curva ABC</a>
+                <a href="#comparativo">Comparativo Regional</a>
+            </nav>
+            <div class="nav-actions">
+                <button id="themeToggle" class="btn-icon" aria-label="Alternar modo escuro" title="Alternar tema">
+                    <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                    <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                </button>
+                <button id="mobileMenuBtn" class="btn-icon btn-hamburger" aria-label="Abrir menu" aria-expanded="false" aria-controls="mobileMenu">
+                    <svg class="icon-menu" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                    <svg class="icon-close" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        </div>
+        <!-- Mobile Menu -->
+        <nav id="mobileMenu" class="mobile-menu hidden" role="navigation" aria-label="Menu mobile">
+            <a href="#hero" class="mobile-menu-link">Início</a>
+            <a href="#pesquisa" class="mobile-menu-link">Pesquisa & BOM</a>
+            <a href="#bi" class="mobile-menu-link">Curva ABC</a>
+            <a href="#comparativo" class="mobile-menu-link">Comparativo Regional</a>
+        </nav>
+    </header>
+
+    <main id="main-content">
+        <!-- Hero Section -->
+        <section id="hero" class="hero" aria-labelledby="hero-title">
+            <div class="hero-content">
+                <div class="hero-badge">
+                    <span class="pulse-dot"></span>
+                    <span>API Online • Free Tier Disponível</span>
+                </div>
+                <h1 id="hero-title">A fonte da verdade para <span class="highlight">custos da construção.</span></h1>
+                <p class="hero-description">Esqueça PDFs e planilhas confusas. A API RESTful da AutoSINAPI entrega dados atualizados, estruturados e prontos para alimentar seus orçamentos e dashboards em milissegundos.</p>
+                
+                <div class="hero-tech-stack" aria-label="Tecnologias utilizadas">
+                    <span class="tech-badge">⚡ FastAPI</span>
+                    <span class="tech-badge">🐘 PostgreSQL (<span id="hero-total-records">...</span>)</span>
+                    <span class="tech-badge">🚀 Redis Cache</span>
+                    <span class="tech-badge">🛡️ Kong Gateway</span>
+                </div>
+                
+                <div class="hero-stats-grid" role="list" aria-label="Estatísticas da API">
+                    <div class="stat-card" role="listitem">
+                        <span class="stat-icon" aria-hidden="true">💰</span>
+                        <span class="stat-val" id="stat-precos">...</span>
+                        <span class="stat-lbl">Preços / Custos Consolidados</span>
+                    </div>
+                    <div class="stat-card" role="listitem">
+                        <span class="stat-icon" aria-hidden="true">📋</span>
+                        <span class="stat-val" id="stat-composicoes">...</span>
+                        <span class="stat-lbl">Composições & BOMs</span>
+                    </div>
+                    <div class="stat-card" role="listitem">
+                        <span class="stat-icon" aria-hidden="true">🏗️</span>
+                        <span class="stat-val" id="stat-insumos">...</span>
+                        <span class="stat-lbl">Insumos Catalogados</span>
+                    </div>
+                    <div class="stat-card" role="listitem">
+                        <span class="stat-icon" aria-hidden="true">⚡</span>
+                        <span class="stat-val" id="stat-latency">&lt; 15ms</span>
+                        <span class="stat-lbl">Latência Média (Cache Hit)</span>
+                    </div>
+                </div>
+
+                <!-- Quick Examples -->
+                <div class="hero-examples">
+                    <p class="examples-label">Experimente agora:</p>
+                    <div class="examples-grid">
+                        <button class="example-btn" data-search="tijolo ceramico" data-section="pesquisa">🧱 Tijolo Cerâmico</button>
+                        <button class="example-btn" data-search="cimento portland" data-section="pesquisa">🏭 Cimento Portland</button>
+                        <button class="example-btn" data-search="pintura latex" data-section="pesquisa">🎨 Pintura Látex</button>
+                        <button class="example-btn" data-type="abc" data-codes="87316,92711,88309">📊 Curva ABC Demo</button>
+                        <button class="example-btn" data-type="compare" data-code="370">🗺️ Comparar Areia (370)</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tool 1: Pesquisa & BOM -->
+        <section id="pesquisa" class="tool-section" aria-labelledby="pesquisa-title">
+            <div class="section-header">
+                <h2 id="pesquisa-title" class="section-title">Pesquisa Inteligente & Explosão Analítica (BOM)</h2>
+                <p class="section-subtitle">Consulte preços locais ou exploda composições em toda sua hierarquia para encontrar o custo de cada prego e hora de mão de obra.</p>
+                <div class="api-endpoint" role="note" aria-label="Endpoint da API utilizado">
+                    <code>GET /api/v1/public/insumos?q={termo}&uf={estado}&data_referencia={data}&regime={regime}</code>
+                    <button class="btn-copy-curl" data-curl="curl -X GET '/api/v1/public/insumos?q=tijolo&uf=SP&data_referencia=2024-01&regime=desonerado'" aria-label="Copiar comando cURL">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        <span>copiar cURL</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="search-box">
+                <div class="search-bar-row">
+                    <div class="input-wrapper">
+                        <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="searchInput" placeholder="Digite no mínimo 3 caracteres (ex: Tijolo, Pintura, Cimento)..." autocomplete="off" aria-label="Buscar insumos ou composições" spellcheck="false">
+                    </div>
+                    <button id="searchBtn" aria-label="Pesquisar">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <span>Pesquisar</span>
+                    </button>
+                </div>
+                <div class="search-filters">
+                    <div class="filter-col">
+                        <label for="stateFilter">Estado (UF)</label>
+                        <select id="stateFilter" class="dynamic-uf"><option value="">Carregando...</option></select>
+                    </div>
+                    <div class="filter-col">
+                        <label for="dateFilter">Referência</label>
+                        <select id="dateFilter" class="dynamic-date"><option value="">Carregando...</option></select>
+                    </div>
+                    <div class="filter-col">
+                        <label for="regimeFilter">Regime</label>
+                        <select id="regimeFilter" class="dynamic-regime"><option value="">Carregando...</option></select>
+                    </div>
+                </div>
+            </div>
+
+            <div id="resultsActions" class="results-actions hidden">
+                <div class="results-toolbar">
+                    <span class="results-count" id="resultsCount" aria-live="polite">Resultados Encontrados</span>
+                    <div class="toolbar-controls">
+                        <select id="sortSelect" class="sort-select" aria-label="Ordenar resultados">
+                            <option value="name_asc">A-Z (Nome)</option>
+                            <option value="name_desc">Z-A (Nome)</option>
+                            <option value="price_desc">Maior Valor</option>
+                            <option value="price_asc">Menor Valor</option>
+                        </select>
+                        <div class="view-toggles" role="group" aria-label="Alternar visualização">
+                            <button id="btnGrid" class="btn-toggle active" aria-label="Visualização em grid" aria-pressed="true">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                            </button>
+                            <button id="btnList" class="btn-toggle" aria-label="Visualização em lista" aria-pressed="false">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="export-group">
+                    <button onclick="exportSearch('json')" class="btn-export" aria-label="Exportar como JSON">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        JSON
+                    </button>
+                    <button onclick="exportSearch('md')" class="btn-export" aria-label="Exportar como Markdown">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        MD
+                    </button>
+                    <button onclick="exportSearch('pdf')" class="btn-export btn-primary-outline" aria-label="Exportar como PDF">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        PDF
+                    </button>
+                </div>
+            </div>
+
+            <!-- Skeleton Loader -->
+            <div id="searchSkeleton" class="skeleton-grid hidden" aria-hidden="true">
+                <div class="skeleton-card"></div>
+                <div class="skeleton-card"></div>
+                <div class="skeleton-card"></div>
+                <div class="skeleton-card"></div>
+                <div class="skeleton-card"></div>
+                <div class="skeleton-card"></div>
+            </div>
+
+            <div id="loader" class="loader hidden" role="status" aria-label="Carregando">
+                <span class="loader-text">Buscando dados...</span>
+            </div>
+            <div id="resultsGrid" class="results-grid grid-view" role="list" aria-label="Resultados da pesquisa"></div>
+            <div id="noResults" class="no-results hidden">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                <p>Nenhum resultado encontrado</p>
+                <p class="no-results-hint">Tente ajustar os filtros ou buscar por outro termo</p>
+            </div>
+        </section>
+
+        <!-- Tool 2: Curva ABC (BI) -->
+        <section id="bi" class="tool-section alt-bg" aria-labelledby="bi-title">
+            <div class="section-header">
+                <h2 id="bi-title" class="section-title">Análise de Curva ABC (BI)</h2>
+                <p class="section-subtitle">Descubra quais insumos geram o maior impacto financeiro em um conjunto de composições. Ideal para foco de compras e negociações.</p>
+                <div class="api-endpoint" role="note" aria-label="Endpoint da API utilizado">
+                    <code>POST /api/v1/public/bi/curva-abc?uf={estado}&data_referencia={data}&regime={regime}</code>
+                    <button class="btn-copy-curl" data-curl="curl -X POST '/api/v1/public/bi/curva-abc?uf=SP&data_referencia=2024-01&regime=desonerado' -H 'Content-Type: application/json' -d '[87316, 92711, 88309]'" aria-label="Copiar comando cURL">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        <span>copiar cURL</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="abc-input-box">
+                <label for="abcInput">Códigos das Composições (separados por vírgula):</label>
+                <div class="search-bar-row">
+                    <div class="input-wrapper">
+                        <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        <input type="text" id="abcInput" placeholder="Ex: 87316, 92711, 88309" value="87316, 92711, 88309" autocomplete="off" aria-label="Códigos das composições" spellcheck="false">
+                    </div>
+                    <button id="abcBtn" aria-label="Calcular Curva ABC">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+                        <span>Calcular Curva ABC</span>
+                    </button>
+                </div>
+                <div class="search-filters" style="margin-top: 1rem;">
+                    <div class="filter-col">
+                        <label for="abcStateFilter">Estado (UF)</label>
+                        <select id="abcStateFilter" class="dynamic-uf"><option value="">Carregando...</option></select>
+                    </div>
+                    <div class="filter-col">
+                        <label for="abcDateFilter">Referência</label>
+                        <select id="abcDateFilter" class="dynamic-date"><option value="">Carregando...</option></select>
+                    </div>
+                    <div class="filter-col">
+                        <label for="abcRegimeFilter">Regime</label>
+                        <select id="abcRegimeFilter" class="dynamic-regime"><option value="">Carregando...</option></select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Skeleton Loader -->
+            <div id="abcSkeleton" class="skeleton-abc hidden" aria-hidden="true">
+                <div class="skeleton-chart"></div>
+                <div class="skeleton-table"></div>
+            </div>
+
+            <div id="abcLoader" class="loader hidden" role="status" aria-label="Calculando Curva ABC">
+                <span class="loader-text">Calculando curva ABC...</span>
+            </div>
+
+            <!-- ABC Results Actions (Grid/Table Toggle) -->
+            <div id="abcResultsActions" class="results-actions hidden">
+                <div class="results-toolbar">
+                    <span class="results-count" id="abcResultsCount" aria-live="polite">Resultados da Curva ABC</span>
+                    <div class="toolbar-controls">
+                        <div class="view-toggles" role="group" aria-label="Alternar visualização da Curva ABC">
+                            <button id="btnAbcGrid" class="btn-toggle active" aria-label="Visualização em grid" aria-pressed="true">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                            </button>
+                            <button id="btnAbcList" class="btn-toggle" aria-label="Visualização em tabela" aria-pressed="false">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="abcResults" class="abc-results hidden">
+                <div class="chart-container">
+                    <canvas id="abcChart" role="img" aria-label="Gráfico da Curva ABC"></canvas>
+                </div>
+                <div id="abcResultsContent">
+                    <div id="abcGrid" class="results-grid grid-view"></div>
+                    <div id="abcTableWrapper" class="abc-table-container hidden">
+                        <div class="table-header">
+                            <h4>Detalhamento da Curva ABC</h4>
+                            <span class="table-badge" id="abcTableBadge"></span>
+                        </div>
+                        <div class="data-table-wrapper">
+                            <table class="data-table" id="abcTable" role="table" aria-label="Tabela da Curva ABC">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Classificação</th>
+                                        <th scope="col">Código</th>
+                                        <th scope="col">Descrição do Insumo</th>
+                                        <th scope="col">Unidade</th>
+                                        <th scope="col">Impacto Total</th>
+                                        <th scope="col">% Acumulado</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tool 3: Comparativo Regional -->
+        <section id="comparativo" class="tool-section" aria-labelledby="comparativo-title">
+            <div class="section-header">
+                <h2 id="comparativo-title" class="section-title">Comparativo Inter-Regional</h2>
+                <p class="section-subtitle">Compare o custo do mesmo item em múltiplos estados simultaneamente para estudos de viabilidade e logística.</p>
+                <div class="api-endpoint" role="note" aria-label="Endpoint da API utilizado">
+                    <code>GET /api/v1/public/{tipo}/{codigo}?uf={estado}&data_referencia={data}&regime={regime}</code>
+                    <button class="btn-copy-curl" data-curl="curl -X GET '/api/v1/public/insumos/370?uf=SP&data_referencia=2024-01&regime=desonerado'" aria-label="Copiar comando cURL">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        <span>copiar cURL</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="compare-input-box">
+                <div class="search-bar-row">
+                    <div class="filter-col" style="flex: 0 0 auto; min-width: 150px;">
+                        <label for="compareType">Tipo de Item</label>
+                        <select id="compareType">
+                            <option value="insumos">Insumo</option>
+                            <option value="composicoes">Composição</option>
+                        </select>
+                    </div>
+                    <div class="filter-col" style="flex: 1;">
+                        <label for="compareCode">Código do Item</label>
+                        <input type="number" id="compareCode" placeholder="Ex: 370 (Areia Média)" min="1" aria-label="Código do item para comparar">
+                    </div>
+                    <button id="compareBtn" style="margin-top: 1.5rem;" aria-label="Comparar preços entre estados">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        <span>Comparar</span>
+                    </button>
+                </div>
+                
+                <!-- State Multi-Select -->
+                <div class="state-selector">
+                    <div class="state-selector-header">
+                        <label>Estados para Comparar</label>
+                        <div class="state-actions">
+                            <button type="button" id="selectAllStates" class="btn-state-action" aria-label="Selecionar todos os estados">Selecionar Todos</button>
+                            <button type="button" id="clearAllStates" class="btn-state-action" aria-label="Limpar seleção de estados">Limpar</button>
+                            <button type="button" id="presetRegions" class="btn-state-action" aria-label="Selecionar regiões representativas">Regiões</button>
+                        </div>
+                    </div>
+                    <div id="stateChips" class="state-chips" role="group" aria-label="Seleção de estados">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                    <div class="state-selector-footer">
+                        <span id="selectedStatesCount">0 estados selecionados</span>
+                    </div>
+                </div>
+
+                <div class="search-filters" style="margin-top: 1rem;">
+                    <div class="filter-col">
+                        <label for="compareDateFilter">Referência</label>
+                        <select id="compareDateFilter" class="dynamic-date"><option value="">Carregando...</option></select>
+                    </div>
+                    <div class="filter-col">
+                        <label for="compareRegimeFilter">Regime</label>
+                        <select id="compareRegimeFilter" class="dynamic-regime"><option value="">Carregando...</option></select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Skeleton Loader -->
+            <div id="compareSkeleton" class="skeleton-compare hidden" aria-hidden="true">
+                <div class="skeleton-title"></div>
+                <div class="skeleton-chart"></div>
+            </div>
+
+            <div id="compareLoader" class="loader hidden" role="status" aria-label="Comparando preços">
+                <span class="loader-text">Comparando preços entre estados...</span>
+            </div>
+
+            <div id="compareResults" class="compare-results hidden">
+                <h3 id="compareItemName" class="compare-item-name"></h3>
+                <div class="compare-stats" id="compareStats" role="list" aria-label="Estatísticas da comparação">
+                    <div class="compare-stat-card" role="listitem">
+                        <span class="compare-stat-label">Menor Preço</span>
+                        <span class="compare-stat-value" id="compareMin">-</span>
+                        <span class="compare-stat-uf" id="compareMinUf">-</span>
+                    </div>
+                    <div class="compare-stat-card" role="listitem">
+                        <span class="compare-stat-label">Maior Preço</span>
+                        <span class="compare-stat-value" id="compareMax">-</span>
+                        <span class="compare-stat-uf" id="compareMaxUf">-</span>
+                    </div>
+                    <div class="compare-stat-card" role="listitem">
+                        <span class="compare-stat-label">Média</span>
+                        <span class="compare-stat-value" id="compareAvg">-</span>
+                        <span class="compare-stat-uf">todos os estados</span>
+                    </div>
+                    <div class="compare-stat-card" role="listitem">
+                        <span class="compare-stat-label">Variação</span>
+                        <span class="compare-stat-value" id="compareVariation">-</span>
+                        <span class="compare-stat-uf">entre estados</span>
+                    </div>
+                </div>
+                <div class="chart-container compare-chart-container">
+                    <canvas id="compareChart" role="img" aria-label="Gráfico comparativo regional"></canvas>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer role="contentinfo">
+        <div class="footer-content">
+            <div class="footer-brand">
+                <h2>Auto<span>SINAPI</span></h2>
+                <p>Construído por engenheiros de dados para engenheiros civis.</p>
+                <div class="footer-tech-stack">
+                    <span class="footer-tech-badge">FastAPI</span>
+                    <span class="footer-tech-badge">PostgreSQL</span>
+                    <span class="footer-tech-badge">Redis</span>
+                    <span class="footer-tech-badge">Kong</span>
+                </div>
+            </div>
+            <div class="footer-links">
+                <h4>Links Úteis</h4>
+                <a href="#" class="footer-link">Documentação da API</a>
+                <a href="#" class="footer-link">Exemplos de Uso</a>
+                <a href="#" class="footer-link">Planos e Preços</a>
+                <a href="#" class="footer-link">Contato</a>
+            </div>
+            <div class="footer-meta">
+                <h4>Status</h4>
+                <div class="status-badge">
+                    <span class="status-dot"></span>
+                    <span>API Online (100% Uptime)</span>
+                </div>
+                <p class="footer-tier-info"><strong>Free Tier:</strong> 15 requisições/minuto via Kong API Gateway.</p>
+                <p class="footer-copyright">© 2024 AutoSINAPI. Todos os direitos reservados.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Detail Modal -->
+    <div id="detailModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalDesc">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3 id="modalTitle">Detalhes do Item</h3>
+                <button class="modal-close" onclick="closeModal()" aria-label="Fechar modal">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <div class="item-info-hero">
+                    <div class="item-info-top">
+                        <span id="modalTypeBadge" class="type-tag">TIPO</span>
+                        <span class="modal-code-badge">#<span id="modalCode">---</span></span>
+                    </div>
+                    <h2 id="modalDesc" class="modal-description">Descrição</h2>
+                    <p class="modal-meta">Unidade: <strong id="modalUn">---</strong></p>
+                    <div class="modal-export">
+                        <button onclick="exportBOM('pdf')" class="btn-export btn-primary-outline" id="btnExportBOM">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            Exportar Detalhes (PDF)
+                        </button>
+                    </div>
+                </div>
+
+                <div class="modal-grid">
+                    <div class="modal-card">
+                        <h4>Série Histórica (Últimos 12 meses)</h4>
+                        <div class="modal-chart-container">
+                            <canvas id="historyChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <div class="modal-card" id="bomSection">
+                        <h4>Estrutura Analítica (BOM)</h4>
+                        <div id="bomTableContainer"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast" class="toast" role="alert" aria-live="assertive"></div>
+
+    <script type="module" src="js/main.js"></script>
+    <!-- Testes (apenas em modo dev ou com ?runTests=true) -->
+    <script>
+      if (['localhost', '127.0.0.1'].includes(location.hostname) || location.hostname.includes('lamp.local') || location.search.includes('runTests=true')) {
+        document.addEventListener('DOMContentLoaded', () => {
+          const s = document.createElement('script');
+          s.src = 'tests.js';
+          document.head.appendChild(s);
+        });
+      }
+    </script>
+</body>
+</html>
