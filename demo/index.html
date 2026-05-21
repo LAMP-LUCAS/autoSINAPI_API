@@ -152,6 +152,18 @@
                         <label for="regimeFilter">Regime</label>
                         <select id="regimeFilter" class="dynamic-regime"><option value="">Carregando...</option></select>
                     </div>
+                    <div class="filter-col" id="classificacaoFilterCol">
+                        <label for="classificacaoFilter">Classificação</label>
+                        <select id="classificacaoFilter" class="dynamic-classificacao">
+                            <option value="">Todas</option>
+                        </select>
+                    </div>
+                    <div class="filter-col" id="grupoFilterCol">
+                        <label for="grupoFilter">Grupo</label>
+                        <select id="grupoFilter" class="dynamic-grupo">
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -461,9 +473,14 @@
                 <div class="item-info-hero">
                     <div class="item-info-top">
                         <span id="modalTypeBadge" class="type-tag">TIPO</span>
+                        <span id="modalStatusBadge" class="badge hidden"></span>
                         <span class="modal-code-badge">#<span id="modalCode">---</span></span>
                     </div>
                     <h2 id="modalDesc" class="modal-description">Descrição</h2>
+                    <div class="modal-classificacao-row">
+                        <span id="modalClassificacao" class="badge badge-classificacao hidden"></span>
+                        <span id="modalGrupo" class="badge badge-grupo hidden"></span>
+                    </div>
                     <div class="modal-price-display">
                         <span class="modal-price-value" id="modalPrice">R$ 0,00</span>
                         <span class="modal-price-unit" id="modalPriceUnit">/unidade</span>
@@ -484,7 +501,13 @@
 
                 <div class="modal-grid">
                     <div class="modal-card history-card">
-                        <h4>Série Histórica (Últimos 12 meses)</h4>
+                        <div class="history-card-header">
+                            <h4>Série Histórica (Últimos 12 meses)</h4>
+                            <button id="btnExportChart" class="btn-export btn-small" aria-label="Exportar gráfico como PNG">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Exportar Gráfico
+                            </button>
+                        </div>
                         <div class="modal-chart-container">
                             <canvas id="historyChart"></canvas>
                         </div>
@@ -509,15 +532,22 @@
                     <div class="modal-card bom-card-section" id="bomSection">
                         <div class="bom-section-header">
                             <h4>Estrutura Analítica (BOM)</h4>
-                            <div class="view-toggles bom-view-toggle hidden" id="bomViewToggle" role="group" aria-label="Alternar visualização do BOM">
-                                <button id="btnBomGrid" class="btn-toggle active" aria-label="Visualização em cards" aria-pressed="true">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-                                </button>
-                                <button id="btnBomList" class="btn-toggle" aria-label="Visualização em tabela" aria-pressed="false">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                                </button>
+                            <div class="bom-section-controls">
+                                <div class="bom-search-wrapper">
+                                    <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                    <input type="text" id="bomSearchInput" placeholder="Filtrar itens do BOM..." aria-label="Filtrar itens do BOM" autocomplete="off">
+                                </div>
+                                <div class="view-toggles bom-view-toggle hidden" id="bomViewToggle" role="group" aria-label="Alternar visualização do BOM">
+                                    <button id="btnBomGrid" class="btn-toggle active" aria-label="Visualização em cards" aria-pressed="true">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                                    </button>
+                                    <button id="btnBomList" class="btn-toggle" aria-label="Visualização em tabela" aria-pressed="false">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                                    </button>
+                                </div>
                             </div>
                         </div>
+                        <div id="bomCostComparison" class="bom-cost-comparison"></div>
                         <div id="bomGrid" class="bom-grid"></div>
                         <div id="bomTableWrapper" class="bom-table-wrapper hidden">
                             <div id="bomTableContainer"></div>

@@ -50,11 +50,20 @@ def get_database_stats(db: Session = Depends(get_db)):
     return crud.get_global_stats(db)
 
 @app.get("/api/v1/public/filters", tags=["Public"])
-def get_filters(db: Session = Depends(get_db)):
+def get_filters(
+    tipo: str = Query(None, description="Filtrar por tipo: 'insumo' (retorna classificacoes) ou 'composicao' (retorna grupos)."),
+    db: Session = Depends(get_db)
+):
     """
     Retorna os filtros dinâmicos disponíveis no banco.
+    Opcionalmente filtra por tipo para retornar classificações ou grupos.
     """
-    return crud.get_available_filters(db)
+    result = crud.get_available_filters(db)
+    if tipo == 'insumo':
+        result.pop('grupos', None)
+    elif tipo == 'composicao':
+        result.pop('classificacoes', None)
+    return result
 
 # --- Endpoints de Administração ---
 
@@ -145,12 +154,17 @@ def search_insumos(
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
     data_referencia: str = Query(..., description="Data de referência no formato AAAA-MM. Ex: 2025-09"),
     regime: str = Query("NAO_DESONERADO", description="Regime de preço."),
+    classificacao: str = Query(None, description="Filtrar por classificação do insumo. Ex: AGREGADOS, ACO, CONCRETO"),
     skip: int = 0, limit: int = 100, db: Session = Depends(get_db)
 ):
     """
     Busca insumos pela descrição e retorna seus preços para um determinado contexto.
+    Opcionalmente filtra por classificação.
     """
     insumos = crud.search_insumos_by_descricao(db, q=q, uf=uf, data_referencia=data_referencia, regime=regime, skip=skip, limit=limit)
+    if classificacao and insumos:
+        classificacao_upper = classificacao.upper()
+        insumos = [i for i in insumos if i.classificacao and i.classificacao.upper() == classificacao_upper]
     return insumos
 
 
@@ -178,12 +192,17 @@ def search_composicoes(
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
     data_referencia: str = Query(..., description="Data de referência no formato AAAA-MM. Ex: 2025-09"),
     regime: str = Query("NAO_DESONERADO", description="Regime de custo."),
+    grupo: str = Query(None, description="Filtrar por grupo da composição. Ex: SERVICOS, ESTRUTURA, INSTALACOES"),
     skip: int = 0, limit: int = 100, db: Session = Depends(get_db)
 ):
     """
     Busca composições pela descrição e retorna seus custos para um determinado contexto.
+    Opcionalmente filtra por grupo.
     """
     composicoes = crud.search_composicoes_by_descricao(db, q=q, uf=uf, data_referencia=data_referencia, regime=regime, skip=skip, limit=limit)
+    if grupo and composicoes:
+        grupo_upper = grupo.upper()
+        composicoes = [c for c in composicoes if c.grupo and c.grupo.upper() == grupo_upper]
     return composicoes
 
 

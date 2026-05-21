@@ -65,6 +65,8 @@ export function createEvents(dom, { search, abc, compare, theme, toast, state, u
       dom.btnList?.addEventListener('click', () => search.setView('list'));
       dom.searchTypeInsumos?.addEventListener('click', () => search.setSearchType('insumos'));
       dom.searchTypeComposicoes?.addEventListener('click', () => search.setSearchType('composicoes'));
+      dom.classificacaoFilter?.addEventListener('change', () => { if (dom.searchInput?.value?.trim().length >= 3) search.perform(); });
+      dom.grupoFilter?.addEventListener('change', () => { if (dom.searchInput?.value?.trim().length >= 3) search.perform(); });
     },
 
     abc() {
@@ -117,6 +119,14 @@ export function createEvents(dom, { search, abc, compare, theme, toast, state, u
       });
       dom.btnBomGrid?.addEventListener('click', () => modal.setBomView('cards'));
       dom.btnBomList?.addEventListener('click', () => modal.setBomView('table'));
+
+      // BOM search (1.5)
+      dom.bomSearchInput?.addEventListener('input', (e) => {
+        modal.filterBom(e.target.value);
+      });
+
+      // Export chart (1.6)
+      dom.btnExportChart?.addEventListener('click', () => modal.exportChart());
 
       // Escape key to close modal
       document.addEventListener('keydown', (e) => {

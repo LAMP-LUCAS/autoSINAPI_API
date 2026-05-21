@@ -81,6 +81,11 @@ const AutoSINAPITests = (() => {
       'compareType', 'compareCode', 'compareDateFilter', 'compareRegimeFilter', 'compareBtn',
       'stateChips', 'compareChart', 'compareResults',
       'detailModal', 'toast',
+      // Sprint 1a: New filter elements
+      'classificacaoFilter', 'grupoFilter',
+      // Sprint 1a: New modal elements
+      'bomSearchInput', 'btnExportChart', 'bomCostComparison',
+      'modalStatusBadge', 'modalClassificacao', 'modalGrupo',
     ];
 
     ids.forEach(id => {
@@ -162,6 +167,32 @@ const AutoSINAPITests = (() => {
       theme.toggle();
     }
 
+    // Test 6: Modal Sprint 1a features
+    const { modal } = window.AutoSINAPI;
+    if (modal) {
+      assertTruthy(modal.exportChart, 'modal.exportChart está definido');
+      assertTruthy(modal.filterBom, 'modal.filterBom está definido');
+      assertTruthy(modal.setBomView, 'modal.setBomView está definido');
+    }
+
+    // Test 7: API filter updates
+    const { api } = window.AutoSINAPI;
+    if (api) {
+      assertTruthy(api.updateFilterVisibility, 'api.updateFilterVisibility está definido');
+      assertTruthy(api.populateFilters, 'api.populateFilters está definido');
+    }
+
+    // Test 8: Search setSearchType works via updateFilterVisibility chain
+    if (search) {
+      assertTruthy(search.setSearchType, 'search.setSearchType está definido');
+      // Simulate toggling search type
+      search.setSearchType('composicoes');
+      const classificacaoCol = document.getElementById('classificacaoFilterCol');
+      if (classificacaoCol) {
+        assertEqual(classificacaoCol.style.display, 'none', 'classificacaoFilterCol fica oculto ao buscar composições');
+      }
+      search.setSearchType('insumos');
+
     console.log(`\n✅ E2E Tests: ${results.passed} passou, ${results.failed} falhou\n`);
   }
 
@@ -179,6 +210,10 @@ NAVEGAÇÃO:
 PESQUISA:
 ☐ Digite 3+ caracteres e clique em Pesquisar
 ☐ Resultados aparecem no grid
+☐ Resultados de insumos mostram badge de classificação (ex: "MATERIAL CERÂMICO")
+☐ Resultados de composições mostram badge de grupo (ex: "ESTRUTURA")
+☐ Items inativos mostram badge "INATIVO" vermelho
+☐ Filtrar por classificação/grupo funciona
 ☐ Trocar view (grid/list) funciona
 ☐ Ordenação funciona
 ☐ Botões de export (JSON/MD/PDF) funcionam
@@ -195,6 +230,15 @@ COMPARATIVO:
 ☐ Clique em Comparar
 ☐ Gráfico de barras aparece
 ☐ Estatísticas (min, max, avg, variação) aparecem
+
+MODAL (SPRINT 1a):
+☐ Abrir modal de composição mostra classificação/grupo/status no header
+☐ Abrir modal de insumo mostra classificação/status
+☐ BOM mostra comparação de custo (BOM total vs Oficial) com delta colorido
+☐ BOM cost comparison mostra verde se delta < 2%, laranja se < 5%, vermelho se > 5%
+☐ Busca no BOM filtra cards e tabela em tempo real
+☐ Botão "Exportar Gráfico" baixa PNG do histórico de preços
+☐ Items inativos mostram badge "INATIVO" no modal
 
 RESPONSIVIDADE:
 ☐ Teste em 320px (smartwatch)

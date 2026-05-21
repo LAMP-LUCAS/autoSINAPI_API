@@ -46,7 +46,9 @@ def get_available_filters(db: Session) -> dict:
     ufs = db.execute(text(f"SELECT DISTINCT uf FROM {settings.TABLE_PRECOS_INSUMOS} ORDER BY uf")).scalars().all()
     datas = db.execute(text(f"SELECT DISTINCT TO_CHAR(data_referencia, 'YYYY-MM') FROM {settings.TABLE_PRECOS_INSUMOS} ORDER BY 1 DESC")).scalars().all()
     regimes = db.execute(text(f"SELECT DISTINCT regime FROM {settings.TABLE_PRECOS_INSUMOS} ORDER BY regime")).scalars().all()
-    return {"ufs": ufs, "datas": datas, "regimes": regimes}
+    classificacoes = db.execute(text(f"SELECT DISTINCT classificacao FROM {settings.TABLE_INSUMOS} WHERE classificacao IS NOT NULL AND classificacao != '' AND status = :status ORDER BY classificacao"), {"status": settings.DEFAULT_ITEM_STATUS}).scalars().all()
+    grupos = db.execute(text(f"SELECT DISTINCT grupo FROM {settings.TABLE_COMPOSICOES} WHERE grupo IS NOT NULL AND grupo != '' AND status = :status ORDER BY grupo"), {"status": settings.DEFAULT_ITEM_STATUS}).scalars().all()
+    return {"ufs": ufs, "datas": datas, "regimes": regimes, "classificacoes": classificacoes, "grupos": grupos}
 
 # --- Seção 1: Funções de Busca Direta (CRUD) ---
 
@@ -55,7 +57,7 @@ def get_insumo_by_codigo(
 ) -> Optional[dict]:
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
-        SELECT i.codigo, i.descricao, i.unidade, p.preco_mediano
+        SELECT i.codigo, i.descricao, i.unidade, i.classificacao, i.status, p.preco_mediano
         FROM {settings.TABLE_INSUMOS} AS i
         JOIN {settings.TABLE_PRECOS_INSUMOS} AS p ON i.codigo = p.insumo_codigo
         WHERE i.codigo = :codigo AND i.status = :status AND p.uf = :uf
@@ -73,7 +75,7 @@ def search_insumos_by_descricao(
 ) -> List[dict]:
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
-        SELECT i.codigo, i.descricao, i.unidade, p.preco_mediano
+        SELECT i.codigo, i.descricao, i.unidade, i.classificacao, i.status, p.preco_mediano
         FROM {settings.TABLE_INSUMOS} AS i
         JOIN {settings.TABLE_PRECOS_INSUMOS} AS p ON i.codigo = p.insumo_codigo
         WHERE i.descricao ILIKE :query AND i.status = :status AND p.uf = :uf
@@ -93,7 +95,7 @@ def get_composicao_by_codigo(
 ) -> Optional[dict]:
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
-        SELECT c.codigo, c.descricao, c.unidade, p.custo_total
+        SELECT c.codigo, c.descricao, c.unidade, c.grupo, c.status, p.custo_total
         FROM {settings.TABLE_COMPOSICOES} AS c
         JOIN {settings.TABLE_CUSTOS_COMPOSICOES} AS p ON c.codigo = p.composicao_codigo
         WHERE c.codigo = :codigo AND c.status = :status AND p.uf = :uf
@@ -111,7 +113,7 @@ def search_composicoes_by_descricao(
 ) -> List[dict]:
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
-        SELECT c.codigo, c.descricao, c.unidade, p.custo_total
+        SELECT c.codigo, c.descricao, c.unidade, c.grupo, c.status, p.custo_total
         FROM {settings.TABLE_COMPOSICOES} AS c
         JOIN {settings.TABLE_CUSTOS_COMPOSICOES} AS p ON c.codigo = p.composicao_codigo
         WHERE c.descricao ILIKE :query AND c.status = :status AND p.uf = :uf

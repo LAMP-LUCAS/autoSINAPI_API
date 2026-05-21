@@ -26,7 +26,15 @@ export function createSearch(config, state, dom, utils, api, toast) {
       const regime = dom.regimeFilter?.value || utils.getDefaultRegime();
       const searchType = state.search.searchType || 'insumos';
 
-      const url = `${config.API_BASE}/${searchType}?q=${encodeURIComponent(query)}&uf=${uf}&data_referencia=${date}&regime=${encodeURIComponent(regime)}`;
+      let url = `${config.API_BASE}/${searchType}?q=${encodeURIComponent(query)}&uf=${uf}&data_referencia=${date}&regime=${encodeURIComponent(regime)}`;
+
+      if (searchType === 'insumos') {
+        const classificacao = dom.classificacaoFilter?.value;
+        if (classificacao) url += `&classificacao=${encodeURIComponent(classificacao)}`;
+      } else {
+        const grupo = dom.grupoFilter?.value;
+        if (grupo) url += `&grupo=${encodeURIComponent(grupo)}`;
+      }
 
       const data = await api.request(url);
       const results = Array.isArray(data) ? data : (data.data || []);
@@ -73,10 +81,17 @@ export function createSearch(config, state, dom, utils, api, toast) {
       const tagClass = tipo === 'insumo' ? 'tag-insumo' : 'tag-comp';
       const tagLabel = tipo === 'insumo' ? 'INSUMO' : 'COMPOSIÇÃO';
       const preco = utils.formatCurrency(item._preco || 0);
+      const classificacao = item.classificacao ? `<span class="badge badge-classificacao">${utils.escapeHtml(item.classificacao)}</span>` : '';
+      const grupo = item.grupo ? `<span class="badge badge-grupo">${utils.escapeHtml(item.grupo)}</span>` : '';
+      const status = item.status && item.status !== 'ATIVO' ? `<span class="badge badge-inativo">INATIVO</span>` : '';
 
       return `
         <div class="card" data-codigo="${item.codigo}" data-tipo="${tipo}" role="listitem">
-          <span class="type-tag ${tagClass}">${tagLabel}</span>
+          <div class="card-badges">
+            <span class="type-tag ${tagClass}">${tagLabel}</span>
+            ${tipo === 'insumo' ? classificacao : grupo}
+            ${status}
+          </div>
           <h3>${utils.escapeHtml(item.descricao || 'Sem descrição')}</h3>
           <div class="price-row">
             <span class="val">${preco}</span>
@@ -95,6 +110,7 @@ export function createSearch(config, state, dom, utils, api, toast) {
     if (dom.searchTypeComposicoes) {
       dom.searchTypeComposicoes.classList.toggle('active', type === 'composicoes');
     }
+    if (api.updateFilterVisibility) api.updateFilterVisibility();
   }
 
   function exportData(format) {
