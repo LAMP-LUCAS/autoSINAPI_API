@@ -2,6 +2,17 @@
 import { $, $$ } from './dom.js';
 
 export function createEvents(dom, { search, abc, compare, theme, toast, state, utils, modal }) {
+  function closeMobileMenu() {
+    document.body.classList.remove('menu-open');
+    dom.mobileMenu?.classList.add('hidden');
+    dom.mobileMenuBtn?.classList.remove('active');
+    dom.mobileMenuBtn?.setAttribute('aria-expanded', false);
+    const iconMenu = dom.mobileMenuBtn?.querySelector('.icon-menu');
+    const iconClose = dom.mobileMenuBtn?.querySelector('.icon-close');
+    if (iconMenu) iconMenu.style.display = '';
+    if (iconClose) iconClose.style.display = 'none';
+  }
+
   const handlers = {
     theme() {
       dom.themeToggle?.addEventListener('click', () => theme.toggle());
@@ -21,16 +32,14 @@ export function createEvents(dom, { search, abc, compare, theme, toast, state, u
       });
 
       dom.mobileMenu?.querySelectorAll('a').forEach(link => {
-        link.addEventListener('click', () => {
-          document.body.classList.remove('menu-open');
-          dom.mobileMenu?.classList.add('hidden');
-          dom.mobileMenuBtn?.classList.remove('active');
-          dom.mobileMenuBtn?.setAttribute('aria-expanded', false);
-          const iconMenu = dom.mobileMenuBtn?.querySelector('.icon-menu');
-          const iconClose = dom.mobileMenuBtn?.querySelector('.icon-close');
-          if (iconMenu) iconMenu.style.display = '';
-          if (iconClose) iconClose.style.display = 'none';
-        });
+        link.addEventListener('click', closeMobileMenu);
+      });
+
+      // Escape key to close mobile menu
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.body.classList.contains('menu-open')) {
+          closeMobileMenu();
+        }
       });
     },
 
@@ -48,20 +57,25 @@ export function createEvents(dom, { search, abc, compare, theme, toast, state, u
     },
 
     search() {
+      dom.searchForm?.addEventListener('submit', e => { e.preventDefault(); search.perform(); });
       dom.searchBtn?.addEventListener('click', () => search.perform());
       dom.searchInput?.addEventListener('keypress', e => { if (e.key === 'Enter') search.perform(); });
       dom.sortSelect?.addEventListener('change', e => { state.search.sortBy = e.target.value; search.render(); });
       dom.btnGrid?.addEventListener('click', () => search.setView('grid'));
       dom.btnList?.addEventListener('click', () => search.setView('list'));
+      dom.searchTypeInsumos?.addEventListener('click', () => search.setSearchType('insumos'));
+      dom.searchTypeComposicoes?.addEventListener('click', () => search.setSearchType('composicoes'));
     },
 
     abc() {
+      dom.abcForm?.addEventListener('submit', e => { e.preventDefault(); abc.perform(); });
       dom.abcBtn?.addEventListener('click', () => abc.perform());
       dom.btnAbcGrid?.addEventListener('click', () => abc.setView('grid'));
       dom.btnAbcList?.addEventListener('click', () => abc.setView('table'));
     },
 
     compare() {
+      dom.compareForm?.addEventListener('submit', e => { e.preventDefault(); compare.perform(); });
       dom.compareBtn?.addEventListener('click', () => compare.perform());
       dom.stateChips?.addEventListener('click', e => {
         const chip = e.target.closest('.state-chip');
@@ -83,11 +97,49 @@ export function createEvents(dom, { search, abc, compare, theme, toast, state, u
       });
     },
 
+    exports() {
+      $$('[data-format]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const fmt = btn.dataset.format;
+          if (btn.id === 'btnExportBOM') {
+            toast.show(`Export BOM ${fmt} em desenvolvimento`, 'info');
+          } else if (search.export) {
+            search.export(fmt);
+          }
+        });
+      });
+    },
+
     modal() {
       $('.modal-close', dom.detailModal)?.addEventListener('click', () => modal.close());
       dom.detailModal?.addEventListener('click', e => {
         if (e.target === dom.detailModal) modal.close();
       });
+      dom.btnBomGrid?.addEventListener('click', () => modal.setBomView('cards'));
+      dom.btnBomList?.addEventListener('click', () => modal.setBomView('table'));
+
+      // Escape key to close modal
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && dom.detailModal && !dom.detailModal.classList.contains('hidden')) {
+          modal.close();
+        }
+      });
+
+      // BOM table scroll indicator
+      const bomTableWrapper = dom.bomTableWrapper;
+      if (bomTableWrapper) {
+        bomTableWrapper.addEventListener('scroll', () => {
+          const isScrollable = bomTableWrapper.scrollWidth > bomTableWrapper.clientWidth;
+          const isScrolled = bomTableWrapper.scrollLeft > 0;
+          bomTableWrapper.classList.toggle('is-scrollable', isScrollable);
+          bomTableWrapper.classList.toggle('is-scrolled', isScrolled);
+        });
+        // Initial check
+        requestAnimationFrame(() => {
+          const isScrollable = bomTableWrapper.scrollWidth > bomTableWrapper.clientWidth;
+          bomTableWrapper.classList.toggle('is-scrollable', isScrollable);
+        });
+      }
     },
 
     cardClicks() {

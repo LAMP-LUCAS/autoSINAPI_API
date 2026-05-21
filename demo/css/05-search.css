@@ -1,7 +1,7 @@
 /* ========== SEARCH BOX ========== */
 .search-box, .abc-input-box, .compare-input-box {
     background: var(--bg-card);
-    padding: 2.5rem;
+    padding: clamp(1.5rem, 4vw, 2.5rem);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-lg);
     margin-bottom: 3rem;
@@ -23,7 +23,7 @@
 
 .input-wrapper {
     flex: 1;
-    min-width: 250px;
+    min-width: 200px;
     position: relative;
     display: flex;
     align-items: center;
@@ -47,7 +47,6 @@
     background: var(--bg-input);
     color: var(--text-main);
     font-family: inherit;
-    pointer-events: auto !important; /* Force clickability */
     position: relative;
     z-index: 40;
 }
@@ -57,7 +56,8 @@
     background: var(--bg-card);
 }
 
-button, .search-bar-row button {
+.search-bar-row button[type="submit"],
+.search-bar-row button:not([type]) {
     background: var(--primary);
     color: white;
     border: none;
@@ -73,16 +73,55 @@ button, .search-bar-row button {
     gap: 0.75rem;
     position: relative;
     z-index: 40;
+    font-family: inherit;
+    min-height: 44px;
 }
-button:hover {
+.search-bar-row button[type="submit"]:hover,
+.search-bar-row button:not([type]):hover {
     background: var(--primary-dark);
     transform: translateY(-1px);
     box-shadow: var(--shadow-md);
 }
-button:active { transform: translateY(0); }
+.search-bar-row button[type="submit"]:active,
+.search-bar-row button:not([type]):active {
+    transform: translateY(0);
+}
 
 .search-filters {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
     gap: 1.5rem;
+}
+
+.search-type-toggle {
+    display: flex;
+    background: var(--bg-alt);
+    padding: 0.25rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+
+.btn-search-type {
+    flex: 1;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-muted);
+    transition: all var(--transition-fast);
+    font-family: inherit;
+    min-height: 44px;
+}
+
+.btn-search-type.active {
+    background: var(--bg-card);
+    color: var(--primary);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-search-type:hover:not(.active) {
+    color: var(--text-main);
 }

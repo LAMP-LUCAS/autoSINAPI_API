@@ -14,7 +14,10 @@ export function createDom() {
     statComposicoes: $('#stat-composicoes'),
     statInsumos: $('#stat-insumos'),
     // Search
+    searchForm: $('#searchForm'),
     searchInput: $('#searchInput'),
+    searchTypeInsumos: $('#searchTypeInsumos'),
+    searchTypeComposicoes: $('#searchTypeComposicoes'),
     stateFilter: $('#stateFilter'),
     dateFilter: $('#dateFilter'),
     regimeFilter: $('#regimeFilter'),
@@ -29,6 +32,7 @@ export function createDom() {
     noResults: $('#noResults'),
     loader: $('#loader'),
     // ABC
+    abcForm: $('#abcForm'),
     abcInput: $('#abcInput'),
     abcStateFilter: $('#abcStateFilter'),
     abcDateFilter: $('#abcDateFilter'),
@@ -45,6 +49,7 @@ export function createDom() {
     abcTable: $('#abcTable'),
     abcTableWrapper: $('#abcTableWrapper'),
     // Compare
+    compareForm: $('#compareForm'),
     compareType: $('#compareType'),
     compareCode: $('#compareCode'),
     compareDateFilter: $('#compareDateFilter'),
@@ -66,7 +71,31 @@ export function createDom() {
     compareVariation: $('#compareVariation'),
     // Modal
     detailModal: $('#detailModal'),
+    modalTitle: $('#modalTitle'),
+    modalDesc: $('#modalDesc'),
+    modalCode: $('#modalCode'),
+    modalTypeBadge: $('#modalTypeBadge'),
+    modalPrice: $('#modalPrice'),
+    modalPriceUnit: $('#modalPriceUnit'),
+    modalUf: $('#modalUf'),
+    modalRef: $('#modalRef'),
+    modalRegime: $('#modalRegime'),
+    modalStatsRow: $('#modalStatsRow'),
+    bomSection: $('#bomSection'),
+    bomViewToggle: $('#bomViewToggle'),
+    bomGrid: $('#bomGrid'),
+    bomTableWrapper: $('#bomTableWrapper'),
+    bomTableContainer: $('#bomTableContainer'),
+    btnBomGrid: $('#btnBomGrid'),
+    btnBomList: $('#btnBomList'),
+    manHoursSection: $('#manHoursSection'),
+    manHoursValue: $('#manHoursValue'),
+    optimizationSection: $('#optimizationSection'),
+    optimizationContainer: $('#optimizationContainer'),
     historyChart: $('#historyChart'),
+    // Compare
+    compareMinUf: $('#compareMinUf'),
+    compareMaxUf: $('#compareMaxUf'),
     // Toast
     toast: $('#toast'),
   };

@@ -20,13 +20,13 @@
     <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
 
     <!-- Header Navigation -->
-    <header class="navbar" role="banner">
+    <header class="navbar">
         <div class="nav-container">
             <div class="logo">
                 <h2>Auto<span>SINAPI</span></h2>
                 <span class="badge badge-free" aria-label="Free Tier API disponível">FREE TIER</span>
             </div>
-            <nav class="nav-links" role="navigation" aria-label="Navegação principal">
+            <nav class="nav-links" aria-label="Navegação principal">
                 <a href="#hero">Início</a>
                 <a href="#pesquisa">Pesquisa & BOM</a>
                 <a href="#bi">Curva ABC</a>
@@ -44,7 +44,7 @@
             </div>
         </div>
         <!-- Mobile Menu -->
-        <nav id="mobileMenu" class="mobile-menu hidden" role="navigation" aria-label="Menu mobile">
+        <nav id="mobileMenu" class="mobile-menu hidden" aria-label="Menu mobile">
             <a href="#hero" class="mobile-menu-link">Início</a>
             <a href="#pesquisa" class="mobile-menu-link">Pesquisa & BOM</a>
             <a href="#bi" class="mobile-menu-link">Curva ABC</a>
@@ -121,18 +121,25 @@
                 </div>
             </div>
 
-            <div class="search-box">
+            <form class="search-box" id="searchForm">
                 <div class="search-bar-row">
                     <div class="input-wrapper">
                         <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                         <input type="text" id="searchInput" placeholder="Digite no mínimo 3 caracteres (ex: Tijolo, Pintura, Cimento)..." autocomplete="off" aria-label="Buscar insumos ou composições" spellcheck="false">
                     </div>
-                    <button id="searchBtn" aria-label="Pesquisar">
+                    <button type="submit" id="searchBtn" aria-label="Pesquisar">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                         <span>Pesquisar</span>
                     </button>
                 </div>
                 <div class="search-filters">
+                    <div class="filter-col">
+                        <label>Tipo de Busca</label>
+                        <div class="search-type-toggle">
+                            <button type="button" id="searchTypeInsumos" class="btn-search-type active" data-type="insumos">Insumos</button>
+                            <button type="button" id="searchTypeComposicoes" class="btn-search-type" data-type="composicoes">Composições</button>
+                        </div>
+                    </div>
                     <div class="filter-col">
                         <label for="stateFilter">Estado (UF)</label>
                         <select id="stateFilter" class="dynamic-uf"><option value="">Carregando...</option></select>
@@ -169,15 +176,15 @@
                     </div>
                 </div>
                 <div class="export-group">
-                    <button onclick="exportSearch('json')" class="btn-export" aria-label="Exportar como JSON">
+                    <button data-format="json" class="btn-export" aria-label="Exportar como JSON">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         JSON
                     </button>
-                    <button onclick="exportSearch('md')" class="btn-export" aria-label="Exportar como Markdown">
+                    <button data-format="md" class="btn-export" aria-label="Exportar como Markdown">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         MD
                     </button>
-                    <button onclick="exportSearch('pdf')" class="btn-export btn-primary-outline" aria-label="Exportar como PDF">
+                    <button data-format="pdf" class="btn-export btn-primary-outline" aria-label="Exportar como PDF">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         PDF
                     </button>
@@ -186,12 +193,12 @@
 
             <!-- Skeleton Loader -->
             <div id="searchSkeleton" class="skeleton-grid hidden" aria-hidden="true">
-                <div class="skeleton-card"></div>
-                <div class="skeleton-card"></div>
-                <div class="skeleton-card"></div>
-                <div class="skeleton-card"></div>
-                <div class="skeleton-card"></div>
-                <div class="skeleton-card"></div>
+                <div class="skeleton-card shimmer"></div>
+                <div class="skeleton-card shimmer"></div>
+                <div class="skeleton-card shimmer"></div>
+                <div class="skeleton-card shimmer"></div>
+                <div class="skeleton-card shimmer"></div>
+                <div class="skeleton-card shimmer"></div>
             </div>
 
             <div id="loader" class="loader hidden" role="status" aria-label="Carregando">
@@ -219,14 +226,14 @@
                 </div>
             </div>
 
-            <div class="abc-input-box">
+            <form class="abc-input-box" id="abcForm">
                 <label for="abcInput">Códigos das Composições (separados por vírgula):</label>
                 <div class="search-bar-row">
                     <div class="input-wrapper">
                         <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         <input type="text" id="abcInput" placeholder="Ex: 87316, 92711, 88309" value="87316, 92711, 88309" autocomplete="off" aria-label="Códigos das composições" spellcheck="false">
                     </div>
-                    <button id="abcBtn" aria-label="Calcular Curva ABC">
+                    <button type="submit" id="abcBtn" aria-label="Calcular Curva ABC">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
                         <span>Calcular Curva ABC</span>
                     </button>
@@ -245,12 +252,12 @@
                         <select id="abcRegimeFilter" class="dynamic-regime"><option value="">Carregando...</option></select>
                     </div>
                 </div>
-            </div>
+            </form>
 
             <!-- Skeleton Loader -->
             <div id="abcSkeleton" class="skeleton-abc hidden" aria-hidden="true">
-                <div class="skeleton-chart"></div>
-                <div class="skeleton-table"></div>
+                <div class="skeleton-chart shimmer"></div>
+                <div class="skeleton-table shimmer"></div>
             </div>
 
             <div id="abcLoader" class="loader hidden" role="status" aria-label="Calculando Curva ABC">
@@ -319,7 +326,7 @@
                 </div>
             </div>
 
-            <div class="compare-input-box">
+            <form class="compare-input-box" id="compareForm">
                 <div class="search-bar-row">
                     <div class="filter-col" style="flex: 0 0 auto; min-width: 150px;">
                         <label for="compareType">Tipo de Item</label>
@@ -332,7 +339,7 @@
                         <label for="compareCode">Código do Item</label>
                         <input type="number" id="compareCode" placeholder="Ex: 370 (Areia Média)" min="1" aria-label="Código do item para comparar">
                     </div>
-                    <button id="compareBtn" style="margin-top: 1.5rem;" aria-label="Comparar preços entre estados">
+                    <button type="submit" id="compareBtn" style="margin-top: 1.5rem;" aria-label="Comparar preços entre estados">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                         <span>Comparar</span>
                     </button>
@@ -366,12 +373,12 @@
                         <select id="compareRegimeFilter" class="dynamic-regime"><option value="">Carregando...</option></select>
                     </div>
                 </div>
-            </div>
+            </form>
 
             <!-- Skeleton Loader -->
             <div id="compareSkeleton" class="skeleton-compare hidden" aria-hidden="true">
-                <div class="skeleton-title"></div>
-                <div class="skeleton-chart"></div>
+                <div class="skeleton-title shimmer"></div>
+                <div class="skeleton-chart shimmer"></div>
             </div>
 
             <div id="compareLoader" class="loader hidden" role="status" aria-label="Comparando preços">
@@ -410,7 +417,7 @@
     </main>
 
     <!-- Footer -->
-    <footer role="contentinfo">
+    <footer>
         <div class="footer-content">
             <div class="footer-brand">
                 <h2>Auto<span>SINAPI</span></h2>
@@ -436,7 +443,7 @@
                     <span>API Online (100% Uptime)</span>
                 </div>
                 <p class="footer-tier-info"><strong>Free Tier:</strong> 15 requisições/minuto via Kong API Gateway.</p>
-                <p class="footer-copyright">© 2024 AutoSINAPI. Todos os direitos reservados.</p>
+                <p class="footer-copyright">&copy; <span id="footerYear"></span> AutoSINAPI. Todos os direitos reservados.</p>
             </div>
         </div>
     </footer>
@@ -446,8 +453,8 @@
         <div class="modal-container">
             <div class="modal-header">
                 <h3 id="modalTitle">Detalhes do Item</h3>
-                <button class="modal-close" onclick="closeModal()" aria-label="Fechar modal">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <button class="modal-close" aria-label="Fechar modal">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
             </div>
             <div class="modal-body" id="modalBody">
@@ -457,9 +464,18 @@
                         <span class="modal-code-badge">#<span id="modalCode">---</span></span>
                     </div>
                     <h2 id="modalDesc" class="modal-description">Descrição</h2>
-                    <p class="modal-meta">Unidade: <strong id="modalUn">---</strong></p>
+                    <div class="modal-price-display">
+                        <span class="modal-price-value" id="modalPrice">R$ 0,00</span>
+                        <span class="modal-price-unit" id="modalPriceUnit">/unidade</span>
+                    </div>
+                    <p class="modal-meta">
+                        <span>UF: <strong id="modalUf">-</strong></span>
+                        <span>Referência: <strong id="modalRef">-</strong></span>
+                        <span>Regime: <strong id="modalRegime">-</strong></span>
+                    </p>
+                    <div class="modal-stats-row" id="modalStatsRow"></div>
                     <div class="modal-export">
-                        <button onclick="exportBOM('pdf')" class="btn-export btn-primary-outline" id="btnExportBOM">
+                        <button data-format="pdf" class="btn-export btn-primary-outline" id="btnExportBOM">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                             Exportar Detalhes (PDF)
                         </button>
@@ -467,21 +483,50 @@
                 </div>
 
                 <div class="modal-grid">
-                    <div class="modal-card">
+                    <div class="modal-card history-card">
                         <h4>Série Histórica (Últimos 12 meses)</h4>
                         <div class="modal-chart-container">
                             <canvas id="historyChart"></canvas>
                         </div>
                     </div>
-                    
-                    <div class="modal-card" id="bomSection">
-                        <h4>Estrutura Analítica (BOM)</h4>
-                        <div id="bomTableContainer"></div>
+
+                    <div class="modal-card manhours-card" id="manHoursSection">
+                        <h4>Hora/Homem Total</h4>
+                        <div class="man-hours-display">
+                            <span class="man-hours-icon">⏱️</span>
+                            <div>
+                                <div class="man-hours-value" id="manHoursValue">0,00 h</div>
+                                <div class="man-hours-label">Total de horas de mão de obra</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal-card optimization-card" id="optimizationSection">
+                        <h4>Top 5 Insumos de Maior Impacto</h4>
+                        <div id="optimizationContainer"></div>
+                    </div>
+
+                    <div class="modal-card bom-card-section" id="bomSection">
+                        <div class="bom-section-header">
+                            <h4>Estrutura Analítica (BOM)</h4>
+                            <div class="view-toggles bom-view-toggle hidden" id="bomViewToggle" role="group" aria-label="Alternar visualização do BOM">
+                                <button id="btnBomGrid" class="btn-toggle active" aria-label="Visualização em cards" aria-pressed="true">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                                </button>
+                                <button id="btnBomList" class="btn-toggle" aria-label="Visualização em tabela" aria-pressed="false">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="bomGrid" class="bom-grid"></div>
+                        <div id="bomTableWrapper" class="bom-table-wrapper hidden">
+                            <div id="bomTableContainer"></div>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
+                </div>
+            </form>
 
     <!-- Toast Notifications -->
     <div id="toast" class="toast" role="alert" aria-live="assertive"></div>

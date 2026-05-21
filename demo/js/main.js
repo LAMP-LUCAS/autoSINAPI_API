@@ -33,6 +33,8 @@ const events = createEvents(dom, { search, abc, compare, theme, toast, state, ut
 async function init() {
   theme.init();
   events.init();
+  const footerYear = document.getElementById('footerYear');
+  if (footerYear) footerYear.textContent = new Date().getFullYear();
   await Promise.all([api.populateFilters(), api.fetchStats()]);
 }
 
@@ -41,9 +43,7 @@ async function init() {
   : init();
 
 // ── Globais para handlers inline (HTML) ──────
-window.exportSearch = (fmt) => search.export(fmt);
-window.exportBOM = (fmt) => toast.show(`Export BOM ${fmt} em desenvolvimento`, 'info');
-window.closeModal = () => modal.close();
+// (reserved for future use; all current handlers use addEventListener via events.js)
 
 // ── Testabilidade (dev apenas) ───────────────
 if (['localhost', '127.0.0.1'].includes(window.location.hostname) || window.location.hostname.includes('lamp.local')) {

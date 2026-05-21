@@ -208,3 +208,42 @@ def get_custo_historico(
     query = text(f"SELECT TO_CHAR(data_referencia, 'YYYY-MM') as data_referencia, {val} as valor FROM {table} WHERE {col} = :c AND uf = :uf AND regime = :r AND data_referencia >= :s AND data_referencia <= :e ORDER BY data_referencia")
     result = db.execute(query, {"c": codigo, "uf": uf.upper(), "r": regime.upper(), "s": s_date, "e": e_date}).fetchall()
     return [dict(r._mapping) for r in result]
+
+@cache_result(ttl=86400)
+def get_composicao_man_hours(db: Session, codigo: int):
+    """
+    Calcula o total de Hora/Homem para uma composição, somando os coeficientes
+    de todos os insumos de mão de obra (unidade 'H') em todos os níveis.
+    """
+    query = text(f"""
+    WITH RECURSIVE composicao_completa (item_codigo, tipo_item, coeficiente_total) AS (
+        SELECT item_codigo, tipo_item, coeficiente FROM {settings.VIEW_COMPOSICAO_ITENS}
+        WHERE composicao_pai_codigo = :codigo
+        UNION ALL
+        SELECT vis.item_codigo, vis.tipo_item, rec.coeficiente_total * vis.coeficiente
+        FROM {settings.VIEW_COMPOSICAO_ITENS} AS vis
+        JOIN composicao_completa AS rec ON vis.composicao_pai_codigo = rec.item_codigo
+        WHERE rec.tipo_item = 'COMPOSICAO'
+    )
+    SELECT SUM(cc.coeficiente_total) as total_hora_homem
+    FROM composicao_completa cc
+    JOIN {settings.TABLE_INSUMOS} i ON cc.item_codigo = i.codigo
+    WHERE cc.tipo_item = 'INSUMO' AND UPPER(i.unidade) = 'H';
+    """)
+    result = db.execute(query, {"codigo": codigo}).first()
+    if result is None or result.total_hora_homem is None:
+        return type('ManHoursResult', (), {'total_hora_homem': 0.0})()
+    return result
+
+@cache_result(ttl=86400)
+def get_candidatos_otimizacao(
+    db: Session, codigo: int, uf: str, data_referencia: str, regime: str, top_n: int = 5
+) -> List[dict]:
+    """
+    Retorna os N insumos de maior impacto financeiro em uma composição.
+    Reutiliza a lógica do BOM filtrando apenas insumos e ordenando por impacto.
+    """
+    bom_data = get_composicao_bom(db, codigo, uf, data_referencia, regime)
+    insumos = [item for item in bom_data if item.get('tipo_item') == 'INSUMO']
+    insumos.sort(key=lambda x: float(x.get('custo_impacto_total') or 0), reverse=True)
+    return insumos[:top_n]

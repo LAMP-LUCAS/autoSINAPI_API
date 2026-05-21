@@ -1,10 +1,64 @@
 /** @file Módulo de Comparativo Inter-Regional */
-import { createChartConfig } from '../utils.js';
+import { createChartConfig, getChartTheme } from '../utils.js';
 
 export function createCompare(config, state, dom, utils, api, toast) {
+  const REGIONS = {
+    'Sudeste': ['SP', 'RJ', 'MG', 'ES'],
+    'Sul': ['PR', 'SC', 'RS'],
+    'Nordeste': ['BA', 'PE', 'CE', 'MA', 'PB', 'RN', 'AL', 'SE', 'PI'],
+    'Norte': ['AM', 'PA', 'AC', 'RO', 'RR', 'AP', 'TO'],
+    'Centro-Oeste': ['GO', 'MT', 'MS', 'DF'],
+  };
+
   function cleanupChart() {
     state.compare.chart?.destroy();
     state.compare.chart = null;
+  }
+
+  function updateChipUI() {
+    if (!dom.stateChips) return;
+    const chips = dom.stateChips.querySelectorAll('.state-chip');
+    chips.forEach(chip => {
+      const uf = chip.dataset.uf;
+      const isSelected = state.compare.selectedStates.has(uf);
+      chip.classList.toggle('selected', isSelected);
+      chip.setAttribute('aria-pressed', isSelected);
+    });
+    const count = state.compare.selectedStates.size;
+    if (dom.selectedStatesCount) {
+      dom.selectedStatesCount.textContent = `${count} estado${count !== 1 ? 's' : ''} selecionado${count !== 1 ? 's' : ''}`;
+    }
+  }
+
+  function toggleState(uf) {
+    if (state.compare.selectedStates.has(uf)) {
+      state.compare.selectedStates.delete(uf);
+    } else {
+      state.compare.selectedStates.add(uf);
+    }
+    updateChipUI();
+  }
+
+  function selectAll() {
+    const ufs = state.filters.ufs.length > 0 ? state.filters.ufs : ['SP', 'RJ', 'MG', 'PR', 'SC', 'RS', 'BA', 'PE', 'GO'];
+    ufs.forEach(uf => state.compare.selectedStates.add(uf));
+    updateChipUI();
+  }
+
+  function clearAll() {
+    state.compare.selectedStates.clear();
+    updateChipUI();
+  }
+
+  function presetRegions() {
+    state.compare.selectedStates.clear();
+    const representative = ['SP', 'RJ', 'MG', 'PR', 'BA', 'AM', 'GO', 'DF'];
+    representative.forEach(uf => {
+      if (state.filters.ufs.includes(uf) || state.filters.ufs.length === 0) {
+        state.compare.selectedStates.add(uf);
+      }
+    });
+    updateChipUI();
   }
 
   async function perform() {
@@ -15,8 +69,11 @@ export function createCompare(config, state, dom, utils, api, toast) {
     const date = dom.compareDateFilter?.value || utils.getDefaultDate();
     const regime = dom.compareRegimeFilter?.value || utils.getDefaultRegime();
 
-    // Dinamismo: Usar TODAS as UFs disponíveis no banco (carregadas via API)
-    const availableUfs = state.filters.ufs.length > 0 ? state.filters.ufs : ['SP', 'RJ', 'MG', 'AC', 'BA', 'PR', 'AM', 'CE'];
+    const selectedUfs = [...state.compare.selectedStates];
+    if (selectedUfs.length === 0) {
+      toast.show('Selecione pelo menos um estado', 'warning');
+      return;
+    }
 
     state.compare.loading = true;
     dom.compareSkeleton?.classList.remove('hidden');
@@ -24,7 +81,7 @@ export function createCompare(config, state, dom, utils, api, toast) {
     cleanupChart();
 
     try {
-      const promises = availableUfs.map(uf =>
+      const promises = selectedUfs.map(uf =>
         api.request(`${config.API_BASE}/${type}/${encodeURIComponent(code)}?uf=${uf}&data_referencia=${date}&regime=${encodeURIComponent(regime)}`)
           .then(data => ({ uf, data, success: true }))
           .catch(() => ({ uf, data: null, success: false }))
@@ -65,7 +122,7 @@ export function createCompare(config, state, dom, utils, api, toast) {
       const min = Math.min(...values);
       const max = Math.max(...values);
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
-      
+
       if (dom.compareMin) {
           const minItem = data.find(d => d.valor === min);
           dom.compareMin.textContent = utils.formatCurrency(min);
@@ -83,6 +140,10 @@ export function createCompare(config, state, dom, utils, api, toast) {
     if (dom.compareChart) {
       const chartLabels = data.map(d => d.uf);
       const chartValues = data.map(d => d.valor);
+      const { textColor, gridColor, primaryColor, successColor, errorColor } = getChartTheme(state.theme);
+
+      const minVal = Math.min(...chartValues.filter(v => v > 0));
+      const maxVal = Math.max(...chartValues.filter(v => v > 0));
 
       const ctx = dom.compareChart.getContext('2d');
       const configChart = {
@@ -92,7 +153,11 @@ export function createCompare(config, state, dom, utils, api, toast) {
           datasets: [{
             label: 'Valor (R$)',
             data: chartValues,
-            backgroundColor: chartValues.map((_, i) => `hsl(${220 + (i * 10)}, 70%, 60%)`),
+            backgroundColor: chartValues.map(v => {
+              if (v === minVal) return successColor;
+              if (v === maxVal) return errorColor;
+              return primaryColor;
+            }),
             borderRadius: 6
           }]
         },
@@ -100,12 +165,22 @@ export function createCompare(config, state, dom, utils, api, toast) {
           responsive: true,
           maintainAspectRatio: false,
           plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true } }
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { color: textColor },
+              grid: { color: gridColor }
+            },
+            x: {
+              ticks: { color: textColor },
+              grid: { color: gridColor }
+            }
+          }
         }
       };
       state.compare.chart = new Chart(ctx, configChart);
     }
   }
 
-  return { perform, render };
+  return { perform, render, toggleState, selectAll, clearAll, presetRegions };
 }

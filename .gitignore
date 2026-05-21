@@ -71,3 +71,6 @@ docker-compose.override.yml
 
 # Model
 AutoSINAPI/
+
+# Logs
+logs/

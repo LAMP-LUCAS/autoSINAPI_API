@@ -10,7 +10,12 @@
     background: var(--bg-card);
     border-radius: var(--radius-lg);
     border: 1px solid var(--border);
-    transition: background var(--transition-slow), border-color var(--transition-slow);
+    transition: all var(--transition-slow);
+    animation: slideIn 0.3s ease-out;
+}
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 .results-toolbar {
     display: flex;
@@ -35,13 +40,14 @@
     padding: 0.4rem 2rem 0.4rem 0.75rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     background-color: var(--bg-input);
     color: var(--text-main);
     cursor: pointer;
     font-family: inherit;
     transition: all var(--transition-fast);
+    min-height: 44px;
 }
 .sort-select:focus {
     border-color: var(--primary);
@@ -68,6 +74,8 @@
     position: relative;
     z-index: auto;
     transition: all var(--transition-fast);
+    min-height: 44px;
+    min-width: 44px;
 }
 .btn-toggle.active {
     background: var(--bg-card);
@@ -90,7 +98,7 @@
     color: var(--text-secondary);
     padding: 0.5rem 0.9rem;
     border-radius: var(--radius-sm);
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     cursor: pointer;
     transition: all var(--transition-fast);
@@ -100,6 +108,7 @@
     font-family: inherit;
     position: relative;
     z-index: auto;
+    min-height: 44px;
 }
 .btn-export:hover {
     background: var(--primary);
@@ -132,26 +141,49 @@
     display: flex;
     flex-direction: column;
     animation: cardAppear 0.4s ease-out;
+    overflow: hidden;
+}
+.card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 0.1875rem;
+    background: linear-gradient(90deg, var(--primary), var(--success));
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform var(--transition-slow);
+}
+.card:hover::before {
+    transform: scaleX(1);
 }
 @keyframes cardAppear {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
 }
-.card:hover {
-    transform: translateY(-3px);
-    box-shadow: var(--shadow-xl);
-    border-color: var(--primary);
+.card:active {
+    transform: translateY(-1px);
 }
-.card:active { transform: translateY(-1px); }
+
+@media (hover: hover) {
+    .card:hover {
+        transform: translateY(-3px);
+        box-shadow: var(--shadow-xl);
+        border-color: var(--primary);
+    }
+}
 
 .list-view .card {
     flex-direction: row;
     align-items: center;
-    gap: 1.5rem;
+    gap: 1rem;
     padding: 1rem 1.5rem;
+    flex-wrap: wrap;
 }
 .list-view .card h3 {
-    flex: 1;
+    flex: 1 1 200px;
+    min-width: 0;
     margin-bottom: 0;
     font-size: 0.95rem;
     white-space: nowrap;
@@ -170,7 +202,7 @@
 }
 
 .type-tag {
-    font-size: 0.6rem;
+    font-size: var(--text-xs);
     font-weight: 800;
     padding: 0.3rem 0.6rem;
     border-radius: 6px;
@@ -178,6 +210,10 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     display: inline-block;
+    transition: all var(--transition-fast);
+}
+.card:hover .type-tag {
+    transform: scale(1.05);
 }
 .tag-insumo { background: var(--tag-insumo-bg); color: var(--tag-insumo-text); }
 .tag-comp { background: var(--tag-comp-bg); color: var(--tag-comp-text); }
@@ -218,6 +254,24 @@
 }
 
 /* ========== SKELETON LOADER ========== */
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+/* Single shimmer utility — apply to any skeleton block */
+.shimmer {
+    position: relative;
+    overflow: hidden;
+}
+.shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, var(--bg-hover), transparent);
+    animation: shimmer 1.5s infinite;
+}
+
 .skeleton-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -228,20 +282,9 @@
     border-radius: var(--radius-lg);
     border: 1px solid var(--border);
     padding: 1.5rem;
-    height: 180px;
-    position: relative;
-    overflow: hidden;
-}
-.skeleton-card::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, var(--bg-hover), transparent);
-    animation: shimmer 1.5s infinite;
-}
-@keyframes shimmer {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
+    height: auto;
+    aspect-ratio: 16 / 10;
+    min-height: 120px;
 }
 
 .skeleton-abc, .skeleton-compare {
@@ -253,46 +296,22 @@
     background: var(--bg-card);
     border-radius: var(--radius-lg);
     border: 1px solid var(--border);
-    height: 350px;
-    position: relative;
-    overflow: hidden;
-}
-.skeleton-chart::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, var(--bg-hover), transparent);
-    animation: shimmer 1.5s infinite;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    min-height: 200px;
 }
 .skeleton-table {
     background: var(--bg-card);
     border-radius: var(--radius-lg);
     border: 1px solid var(--border);
-    height: 200px;
-    position: relative;
-    overflow: hidden;
-}
-.skeleton-table::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, var(--bg-hover), transparent);
-    animation: shimmer 1.5s infinite;
+    min-height: 150px;
+    height: auto;
 }
 .skeleton-title {
     background: var(--bg-card);
     border-radius: var(--radius-md);
     border: 1px solid var(--border);
     height: 40px;
-    position: relative;
-    overflow: hidden;
-}
-.skeleton-title::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, var(--bg-hover), transparent);
-    animation: shimmer 1.5s infinite;
 }
 
 /* ========== LOADER ========== */

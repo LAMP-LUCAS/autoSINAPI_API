@@ -1,7 +1,8 @@
 /* ========== TOAST ========== */
 .toast {
     position: fixed;
-    bottom: 2rem;
+    bottom: clamp(1rem, 3vh, 2rem);
+    bottom: calc(env(safe-area-inset-bottom, 2rem) + 0.5rem);
     left: 50%;
     transform: translate(-50%, 150%);
     background: var(--text-main);
@@ -13,9 +14,29 @@
     box-shadow: var(--shadow-xl);
     transition: transform 0.4s cubic-bezier(0.175,0.885,0.32,1.275);
     z-index: var(--z-toast);
-    pointer-events: none;
+    pointer-events: auto;
+    cursor: pointer;
     max-width: 90vw;
     text-align: center;
+    backdrop-filter: blur(8px);
 }
-.toast.show { transform: translate(-50%, 0); }
+.toast.show {
+    transform: translate(-50%, 0);
+}
+.toast-success {
+    background: var(--success);
+    color: white;
+}
+.toast-error {
+    background: var(--error);
+    color: white;
+}
+.toast-warning {
+    background: var(--warning);
+    color: white;
+}
+.toast-info {
+    background: var(--primary);
+    color: white;
+}
 

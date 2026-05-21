@@ -1,9 +1,9 @@
 /** @file Tema — light/dark toggle + Chart.js sync */
+import { getChartTheme } from './utils.js';
+
 export function createTheme(state) {
   function updateChart(chart) {
-    const isDark = state.theme === 'dark';
-    const textColor = isDark ? '#f0f0f0' : '#1a1a1a';
-    const gridColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+    const { textColor, gridColor } = getChartTheme(state.theme);
 
     const { scales, plugins } = chart.options;
     if (scales?.x) {

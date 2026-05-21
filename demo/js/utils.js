@@ -1,6 +1,37 @@
 /** @file Utilitários — funções puras e helpers */
 import { CONFIG } from './config.js';
 
+/**
+ * Converte cor hex (#rgb ou #rrggbb) para rgba
+ * @param {string} hex
+ * @param {number} alpha
+ * @returns {string} rgba(r, g, b, alpha)
+ */
+export function hexToRgba(hex, alpha = 1) {
+  const v = parseInt(hex.slice(1), 16);
+  if (hex.length === 4) {
+    const r = (v >> 8) * 17, g = ((v >> 4) & 0xf) * 17, b = (v & 0xf) * 17;
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  return `rgba(${v>>16},${(v>>8)&255},${v&255},${alpha})`;
+}
+
+/**
+ * Retorna paleta de cores Chart.js baseada no tema
+ * @param {'light'|'dark'} theme
+ * @returns {{ textColor: string, gridColor: string, primaryColor: string, successColor: string, errorColor: string }}
+ */
+export function getChartTheme(theme) {
+  const isDark = theme === 'dark';
+  return {
+    textColor: isDark ? '#f0f0f0' : '#1a1a1a',
+    gridColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+    primaryColor: isDark ? '#60a5fa' : '#2563eb',
+    successColor: isDark ? '#34d399' : '#10b981',
+    errorColor: isDark ? '#f87171' : '#ef4444',
+  };
+}
+
 export function createUtils(state) {
   return {
     escapeHtml(str) {
@@ -24,7 +55,10 @@ export function createUtils(state) {
     },
 
     getDefaultUf() { return this.getDefault('ufs', CONFIG.FALLBACK_UF); },
-    getDefaultDate() { return this.getDefault('dates', new Date().toISOString().split('T')[0]); },
+    getDefaultDate() {
+      const now = new Date();
+      return this.getDefault('dates', `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+    },
     getDefaultRegime() { return this.getDefault('regimes', CONFIG.FALLBACK_REGIME); },
 
     async copyToClipboard(text) {
@@ -41,6 +75,17 @@ export function createUtils(state) {
         return true;
       }
     },
+
+    /** Descarrega conteúdo como arquivo (Blob + URL + download) */
+    downloadAsFile(content, filename, mimeType = 'text/plain') {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
   };
 }
 
@@ -54,18 +99,18 @@ export function createUtils(state) {
  * @returns {Object} Config completa do Chart.js
  */
 export function createChartConfig(type, labels, datasets, theme, overrides = {}) {
-  const isDark = theme === 'dark';
-  const colors = isDark ? { text: '#f0f0f0', grid: 'rgba(255,255,255,0.1)' } : { text: '#1a1a1a', grid: 'rgba(0,0,0,0.1)' };
+  const { textColor, gridColor } = getChartTheme(theme);
 
   return {
     type,
     data: { labels, datasets },
     options: {
       responsive: true,
-      plugins: { legend: { labels: { color: colors.text } } },
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: textColor } } },
       scales: {
-        x: { ticks: { color: colors.text }, grid: { color: colors.grid } },
-        y: { ticks: { color: colors.text }, grid: { color: colors.grid }, beginAtZero: true },
+        x: { ticks: { color: textColor }, grid: { color: gridColor } },
+        y: { ticks: { color: textColor }, grid: { color: gridColor }, beginAtZero: true },
       },
       ...overrides,
     },

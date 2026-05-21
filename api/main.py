@@ -213,9 +213,13 @@ def get_composition_man_hours(codigo: int, db: Session = Depends(get_db)):
     de todos os insumos de mão de obra (unidade 'H') em todos os níveis.
     """
     result = crud.get_composicao_man_hours(db, codigo=codigo)
-    if result is None or result.total_hora_homem is None:
-        return schemas.ComposicaoManHours(total_hora_homem=0.0)
-    return result
+    total_hh = 0.0
+    if result is not None:
+        if isinstance(result, dict):
+            total_hh = result.get('total_hora_homem') or 0.0
+        else:
+            total_hh = getattr(result, 'total_hora_homem', None) or 0.0
+    return schemas.ComposicaoManHours(total_hora_homem=total_hh)
 
 @app.post("/api/v1/public/bi/curva-abc", response_model=List[schemas.CurvaABCItem], tags=["Business Intelligence"])
 def get_abc_curve(

@@ -1,7 +1,9 @@
 /* ========== CHARTS ========== */
 .chart-container {
     position: relative;
-    height: 350px;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    min-height: 250px;
     width: 100%;
     margin-bottom: 2rem;
     background: var(--bg-card);
@@ -9,10 +11,15 @@
     border: 1px solid var(--border);
     padding: 1.5rem;
     overflow: hidden;
+    transition: all var(--transition-slow);
+}
+.chart-container:hover {
+    border-color: var(--primary);
+    box-shadow: var(--shadow-md);
 }
 .chart-container canvas {
-    width: 100% !important;
-    height: 100% !important;
+    width: 100%;
+    height: 100%;
 }
 
 /* ========== ABC RESULTS ========== */
@@ -30,6 +37,11 @@
     border-radius: var(--radius-lg);
     border: 1px solid var(--border);
     overflow: hidden;
+    transition: all var(--transition-slow);
+}
+.abc-table-container:hover {
+    border-color: var(--primary);
+    box-shadow: var(--shadow-md);
 }
 .table-header {
     display: flex;
@@ -37,6 +49,7 @@
     align-items: center;
     padding: 1rem 1.5rem;
     border-bottom: 1px solid var(--border);
+    background: var(--bg-alt);
 }
 .table-header h4 {
     font-size: 1rem;
@@ -44,7 +57,7 @@
     color: var(--text-main);
 }
 .table-badge {
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     padding: 0.25rem 0.6rem;
     border-radius: var(--radius-full);
@@ -55,6 +68,7 @@
 .data-table-wrapper {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable both-edges;
 }
 .data-table {
     width: 100%;
@@ -65,20 +79,30 @@
     background: var(--bg-alt);
     padding: 1rem 1.25rem;
     text-align: left;
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     text-transform: uppercase;
     font-weight: 800;
     color: var(--text-muted);
     border-bottom: 2px solid var(--border);
     position: sticky;
     top: 0;
+    z-index: 1;
 }
 .data-table td {
     padding: 1rem 1.25rem;
     border-bottom: 1px solid var(--border);
     font-weight: 500;
     color: var(--text-main);
+    transition: background var(--transition-fast);
 }
-.data-table tbody tr { transition: background var(--transition-fast); }
-.data-table tbody tr:hover { background: var(--primary-light); }
+.data-table tbody tr {
+    transition: background var(--transition-fast);
+}
+.data-table tbody tr:hover {
+    background: var(--primary-light);
+}
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
 

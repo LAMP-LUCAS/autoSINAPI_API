@@ -1,5 +1,5 @@
 /** @file Módulo de Curva ABC (BI) */
-import { createChartConfig, createViewToggle } from '../utils.js';
+import { createChartConfig, createViewToggle, getChartTheme } from '../utils.js';
 
 export function createABC(config, state, dom, utils, api, toast) {
   const viewToggle = createViewToggle(
@@ -86,6 +86,7 @@ export function createABC(config, state, dom, utils, api, toast) {
 
     // Chart
     if (dom.abcChart) {
+      const { textColor, gridColor, primaryColor, errorColor } = getChartTheme(state.theme);
       const labels = data.slice(0, 15).map(i => i.descricao.substring(0, 20) + '...');
       const impacts = data.slice(0, 15).map(i => i.custo_total_agregado);
       const accumulated = data.slice(0, 15).map(i => i.percentual_acumulado);
@@ -98,14 +99,14 @@ export function createABC(config, state, dom, utils, api, toast) {
             {
                 label: 'Impacto Financeiro (R$)',
                 data: impacts,
-                backgroundColor: '#2563eb',
+                backgroundColor: primaryColor,
                 yAxisID: 'y',
             },
             {
                 label: '% Acumulado',
                 data: accumulated,
                 type: 'line',
-                borderColor: '#ef4444',
+                borderColor: errorColor,
                 borderWidth: 2,
                 pointRadius: 3,
                 yAxisID: 'y1',
@@ -116,8 +117,32 @@ export function createABC(config, state, dom, utils, api, toast) {
           responsive: true,
           maintainAspectRatio: false,
           scales: {
-            y: { type: 'linear', display: true, position: 'left', beginAtZero: true },
-            y1: { type: 'linear', display: true, position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false } }
+            y: {
+              type: 'linear',
+              display: true,
+              position: 'left',
+              beginAtZero: true,
+              ticks: { color: textColor },
+              grid: { color: gridColor }
+            },
+            y1: {
+              type: 'linear',
+              display: true,
+              position: 'right',
+              min: 0,
+              max: 100,
+              grid: { drawOnChartArea: false },
+              ticks: { color: textColor }
+            },
+            x: {
+              ticks: { color: textColor },
+              grid: { color: gridColor }
+            }
+          },
+          plugins: {
+            legend: {
+              labels: { color: textColor }
+            }
           }
         }
       };

@@ -40,6 +40,7 @@ class ComposicaoBOMItem(BaseModel):
     """Schema para um item dentro do Bill of Materials de uma composição."""
     item_codigo: int
     tipo_item: str
+    nivel: int
     descricao: str
     unidade: str
     coeficiente_total: float
