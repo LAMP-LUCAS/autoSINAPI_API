@@ -21,6 +21,7 @@ class Insumo(BaseModel):
     unidade: str
     preco_mediano: Optional[float] = None
     classificacao: Optional[str] = None
+    origem_preco: Optional[str] = None
     status: Optional[str] = None
 
     class Config:
@@ -33,6 +34,7 @@ class Composicao(BaseModel):
     unidade: str
     custo_total: Optional[float] = None
     grupo: Optional[str] = None
+    percentual_mo: Optional[float] = None
     status: Optional[str] = None
 
     class Config:

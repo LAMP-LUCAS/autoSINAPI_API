@@ -58,7 +58,7 @@ def get_insumo_by_codigo(
 ) -> Optional[dict]:
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
-        SELECT i.codigo, i.descricao, i.unidade, i.classificacao, i.status, p.preco_mediano
+        SELECT i.codigo, i.descricao, i.unidade, i.classificacao, i.status, p.preco_mediano, p.origem_preco
         FROM {settings.TABLE_INSUMOS} AS i
         JOIN {settings.TABLE_PRECOS_INSUMOS} AS p ON i.codigo = p.insumo_codigo
         WHERE i.codigo = :codigo AND i.status = :status AND p.uf = :uf
@@ -69,7 +69,7 @@ def get_insumo_by_codigo(
         "codigo": codigo, "uf": uf.upper(), "start_date": start_date, "end_date": end_date,
         "regime": regime.upper(), "status": settings.DEFAULT_ITEM_STATUS
     }).first()
-    return result
+    return result._mapping if result else None
 
 @cache_result(ttl=3600)
 def search_insumos_by_descricao(
@@ -78,7 +78,7 @@ def search_insumos_by_descricao(
 ) -> List[dict]:
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
-        SELECT i.codigo, i.descricao, i.unidade, i.classificacao, i.status, p.preco_mediano
+        SELECT i.codigo, i.descricao, i.unidade, i.classificacao, i.status, p.preco_mediano, p.origem_preco
         FROM {settings.TABLE_INSUMOS} AS i
         JOIN {settings.TABLE_PRECOS_INSUMOS} AS p ON i.codigo = p.insumo_codigo
         WHERE i.descricao ILIKE :query AND i.status = :status AND p.uf = :uf
@@ -93,7 +93,7 @@ def search_insumos_by_descricao(
         "skip": skip, "limit": limit,
         **({"classificacao": classificacao} if classificacao else {})
     }).fetchall()
-    return result
+    return [r._mapping for r in result]
 
 @cache_result(ttl=3600)
 def get_composicao_by_codigo(
@@ -101,7 +101,7 @@ def get_composicao_by_codigo(
 ) -> Optional[dict]:
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
-        SELECT c.codigo, c.descricao, c.unidade, c.grupo, c.status, p.custo_total
+        SELECT c.codigo, c.descricao, c.unidade, c.grupo, c.status, p.custo_total, p.percentual_mo
         FROM {settings.TABLE_COMPOSICOES} AS c
         JOIN {settings.TABLE_CUSTOS_COMPOSICOES} AS p ON c.codigo = p.composicao_codigo
         WHERE c.codigo = :codigo AND c.status = :status AND p.uf = :uf
@@ -112,7 +112,7 @@ def get_composicao_by_codigo(
         "codigo": codigo, "uf": uf.upper(), "start_date": start_date, "end_date": end_date,
         "regime": regime.upper(), "status": settings.DEFAULT_ITEM_STATUS
     }).first()
-    return result
+    return result._mapping if result else None
 
 @cache_result(ttl=3600)
 def search_composicoes_by_descricao(
@@ -121,7 +121,7 @@ def search_composicoes_by_descricao(
 ) -> List[dict]:
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
-        SELECT c.codigo, c.descricao, c.unidade, c.grupo, c.status, p.custo_total
+        SELECT c.codigo, c.descricao, c.unidade, c.grupo, c.status, p.custo_total, p.percentual_mo
         FROM {settings.TABLE_COMPOSICOES} AS c
         JOIN {settings.TABLE_CUSTOS_COMPOSICOES} AS p ON c.codigo = p.composicao_codigo
         WHERE c.descricao ILIKE :query AND c.status = :status AND p.uf = :uf
@@ -136,7 +136,7 @@ def search_composicoes_by_descricao(
         "skip": skip, "limit": limit,
         **({"grupo": grupo} if grupo else {})
     }).fetchall()
-    return result
+    return [r._mapping for r in result]
 
 # --- Seção 2: Funções de BI ---
 
