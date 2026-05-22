@@ -202,10 +202,10 @@ class Database:
         sinapi_versao = kwargs.get("sinapi_versao")
         etl_run_id = kwargs.get("etl_run_id")
         
-        # Add columns if they don't exist
-        if sinapi_versao and "sinapi_versao" not in data.columns:
+        # Add columns if they don't exist, always propagate values
+        if sinapi_versao:
             data["sinapi_versao"] = sinapi_versao
-        if etl_run_id and "etl_run_id" not in data.columns:
+        if etl_run_id:
             data["etl_run_id"] = etl_run_id
         if "created_at" not in data.columns:
             data["created_at"] = None

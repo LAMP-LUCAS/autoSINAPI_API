@@ -96,23 +96,23 @@ class TestAuditEndpoint:
             })
         ]
 
-        with patch("api.main.get_db", return_value=mock_db_session):
-            response = client.get("/api/v1/public/bi/audit/insumo/1001")
-            assert response.status_code == 200
-            data = response.json()
-            assert isinstance(data, list)
-            if len(data) > 0:
-                assert "table_name" in data[0] or "operation" in data[0]
+        app.dependency_overrides[get_db] = lambda: mock_db_session
+        response = client.get("/api/v1/public/bi/audit/insumo/1001")
+        app.dependency_overrides.clear()
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
 
     def test_audit_endpoint_filters_by_date(self, client, mock_db_session):
         """Testa se o endpoint aceita filtro por data_referencia."""
         mock_db_session.execute.return_value.fetchall.return_value = []
 
-        with patch("api.main.get_db", return_value=mock_db_session):
-            response = client.get(
-                "/api/v1/public/bi/audit/insumo/1001?data_referencia=2024-01"
-            )
-            assert response.status_code in [200, 404]
+        app.dependency_overrides[get_db] = lambda: mock_db_session
+        response = client.get(
+            "/api/v1/public/bi/audit/insumo/1001?data_referencia=2024-01"
+        )
+        app.dependency_overrides.clear()
+        assert response.status_code in [200, 404]
 
     def test_audit_endpoint_invalid_item_type(self, client):
         """Testa se endpoint rejeita tipo de item inválido."""

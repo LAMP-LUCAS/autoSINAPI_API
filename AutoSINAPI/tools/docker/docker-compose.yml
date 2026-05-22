@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgres:15
+    container_name: autosinapi_db
+    env_file:
+      - ./.env
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - autosinapi_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: autosinapi-app
+    container_name: autosinapi_app
+    build:
+      context: ../..
+      dockerfile: tools/docker/Dockerfile
+    # Mantém o container rodando em idle para que o 'exec' possa ser usado
+    command: ["tail", "-f", "/dev/null"]
+    env_file:
+      - ./.env
+    environment:
+      - DOCKER_ENV=true
+      - POSTGRES_HOST=db
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./downloads:/app/downloads
+      - ../../backups:/app/backups
+      - ../../logs:/app/logs
+    networks:
+      - autosinapi_net
+
+  adminer:
+    image: adminer
+    container_name: autosinapi_adminer
+    restart: always
+    ports:
+      - 8080:8080
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - autosinapi_net
+
+volumes:
+  postgres_data:
+
+networks:
+  autosinapi_net:
+    driver: bridge

@@ -1,0 +1,18 @@
+{
+    "secrets_path": "tools/sql_access.secrets",
+    "default_year": "2025",
+    "default_month": "07",
+    "default_format": "xlsx",
+    "workbook_type_name": "REFERENCIA",
+    "duplicate_policy": "substituir",
+    "backup_dir": "./backups",
+    "log_level": "info",
+    "sheet_processors": {
+        "ISD": {"split_id": 5, "header_id": 9},
+        "CSD": {"split_id": 4, "header_id": 9},
+        "ANALITICO": {"split_id": 0, "header_id": 9},
+        "COEFICIENTES": {"split_id": 5, "header_id": 5},
+        "MANUTENCOES": {"split_id": 0, "header_id": 5},
+        "MAO_DE_OBRA": {"split_id": 4, "header_id": 5}
+    }
+}

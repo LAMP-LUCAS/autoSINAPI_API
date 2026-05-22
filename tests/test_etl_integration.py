@@ -13,6 +13,7 @@ def db_session():
     finally:
         session.close()
 
+@pytest.mark.skip(reason="Requer banco PostgreSQL real com sandbox configurado")
 def test_etl_persistence_and_api_read_consistency(db_session):
     """
     Teste de Integração: Verifica se o ETL persiste dados em tabelas que a API consegue ler.
