@@ -50,6 +50,7 @@ consistência dos dados.
 
 import logging
 import json
+import uuid
 from typing import Any, Dict
 
 import pandas as pd
@@ -101,74 +102,75 @@ class Database:
         ddl = f"""
         CREATE TABLE {self.config.DB_TABLE_INSUMOS} (
             codigo INTEGER PRIMARY KEY, descricao TEXT NOT NULL, unidade VARCHAR, classificacao TEXT, status VARCHAR DEFAULT '{self.config.DB_DEFAULT_ITEM_STATUS}',
-            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id UUID
+            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36)
         );
         CREATE TABLE {self.config.DB_TABLE_COMPOSICOES} (
             codigo INTEGER PRIMARY KEY, descricao TEXT NOT NULL, unidade VARCHAR, grupo VARCHAR, status VARCHAR DEFAULT '{self.config.DB_DEFAULT_ITEM_STATUS}',
-            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id UUID
+            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36)
         );
         CREATE TABLE {self.config.DB_TABLE_INSUMOS_FAMILIAS} (
             codigo_familia INTEGER NOT NULL, insumo_codigo INTEGER NOT NULL, categoria VARCHAR(50),
-            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id UUID,
+            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36),
             PRIMARY KEY (codigo_familia, insumo_codigo),
             FOREIGN KEY (insumo_codigo) REFERENCES {self.config.DB_TABLE_INSUMOS}(codigo) ON DELETE CASCADE
         );
         CREATE TABLE {self.config.DB_TABLE_COEFICIENTES_FAMILIA} (
             insumo_codigo INTEGER NOT NULL, uf CHAR(2) NOT NULL, data_referencia DATE NOT NULL, coeficiente NUMERIC,
-            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id UUID,
+            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36),
             PRIMARY KEY (insumo_codigo, uf, data_referencia),
             FOREIGN KEY (insumo_codigo) REFERENCES {self.config.DB_TABLE_INSUMOS}(codigo) ON DELETE CASCADE
         );
         CREATE TABLE {self.config.DB_TABLE_COMPOSICOES_MIX_MO} (
             composicao_codigo INTEGER NOT NULL, uf CHAR(2) NOT NULL, data_referencia DATE NOT NULL, porcentagem_mo NUMERIC,
-            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id UUID,
+            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36),
             PRIMARY KEY (composicao_codigo, uf, data_referencia),
             FOREIGN KEY (composicao_codigo) REFERENCES {self.config.DB_TABLE_COMPOSICOES}(codigo) ON DELETE CASCADE
         );
         CREATE TABLE {self.config.DB_TABLE_PRECOS_INSUMOS} (
             insumo_codigo INTEGER NOT NULL, uf CHAR(2) NOT NULL, data_referencia DATE NOT NULL, regime VARCHAR NOT NULL, preco_mediano NUMERIC, origem_preco VARCHAR(10),
-            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id UUID,
+            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36),
             PRIMARY KEY (insumo_codigo, uf, data_referencia, regime),
             FOREIGN KEY (insumo_codigo) REFERENCES {self.config.DB_TABLE_INSUMOS}(codigo) ON DELETE CASCADE
         );
         CREATE TABLE {self.config.DB_TABLE_CUSTOS_COMPOSICOES} (
             composicao_codigo INTEGER NOT NULL, uf CHAR(2) NOT NULL, data_referencia DATE NOT NULL, regime VARCHAR NOT NULL, custo_total NUMERIC, percentual_mo NUMERIC,
-            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id UUID,
+            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36),
             PRIMARY KEY (composicao_codigo, uf, data_referencia, regime),
             FOREIGN KEY (composicao_codigo) REFERENCES {self.config.DB_TABLE_COMPOSICOES}(codigo) ON DELETE CASCADE
         );
         CREATE TABLE {self.config.DB_TABLE_COMPOSICAO_INSUMOS} (
             composicao_pai_codigo INTEGER NOT NULL, insumo_filho_codigo INTEGER NOT NULL, coeficiente NUMERIC,
-            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id UUID,
+            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36),
             PRIMARY KEY (composicao_pai_codigo, insumo_filho_codigo),
             FOREIGN KEY (composicao_pai_codigo) REFERENCES {self.config.DB_TABLE_COMPOSICOES}(codigo) ON DELETE CASCADE,
             FOREIGN KEY (insumo_filho_codigo) REFERENCES {self.config.DB_TABLE_INSUMOS}(codigo) ON DELETE CASCADE
         );
         CREATE TABLE {self.config.DB_TABLE_COMPOSICAO_SUBCOMPOSICOES} (
             composicao_pai_codigo INTEGER NOT NULL, composicao_filho_codigo INTEGER NOT NULL, coeficiente NUMERIC,
-            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id UUID,
+            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36),
             PRIMARY KEY (composicao_pai_codigo, composicao_filho_codigo),
             FOREIGN KEY (composicao_pai_codigo) REFERENCES {self.config.DB_TABLE_COMPOSICOES}(codigo) ON DELETE CASCADE,
             FOREIGN KEY (composicao_filho_codigo) REFERENCES {self.config.DB_TABLE_COMPOSICOES}(codigo) ON DELETE CASCADE
         );
         CREATE TABLE {self.config.DB_TABLE_MANUTENCOES} (
             item_codigo INTEGER NOT NULL, tipo_item VARCHAR NOT NULL, data_referencia DATE NOT NULL, tipo_manutencao TEXT NOT NULL, descricao_item TEXT,
-            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id UUID,
+            created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36),
             PRIMARY KEY (item_codigo, tipo_item, data_referencia, tipo_manutencao)
         );
         CREATE TABLE {self.config.DB_TABLE_AUDIT_LOG} (
             id BIGSERIAL PRIMARY KEY, table_name VARCHAR(100) NOT NULL, record_pk JSONB NOT NULL, operation VARCHAR(10) NOT NULL,
-            old_values JSONB, new_values JSONB, sinapi_versao VARCHAR(20), etl_run_id UUID, motivo_manutencao VARCHAR(200),
+            old_values JSONB, new_values JSONB, sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36), motivo_manutencao VARCHAR(200),
             created_at TIMESTAMPTZ DEFAULT NOW()
         );
-        CREATE INDEX idx_audit_table_name ON {self.config.DB_TABLE_AUDIT_LOG}(table_name);
-        CREATE INDEX idx_audit_created_at ON {self.config.DB_TABLE_AUDIT_LOG}(created_at);
-        CREATE INDEX idx_audit_etl_run ON {self.config.DB_TABLE_AUDIT_LOG}(etl_run_id);
-        CREATE INDEX idx_insumos_updated_at ON {self.config.DB_TABLE_INSUMOS}(updated_at);
-        CREATE INDEX idx_composicoes_updated_at ON {self.config.DB_TABLE_COMPOSICOES}(updated_at);
-        CREATE INDEX idx_precos_updated_at ON {self.config.DB_TABLE_PRECOS_INSUMOS}(updated_at);
-        CREATE INDEX idx_custos_updated_at ON {self.config.DB_TABLE_CUSTOS_COMPOSICOES}(updated_at);
-        CREATE INDEX idx_manutencoes_data ON {self.config.DB_TABLE_MANUTENCOES}(data_referencia);
+        -- audit indexes use table-specific names to avoid clashes
+        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_AUDIT_LOG}_table_name ON {self.config.DB_TABLE_AUDIT_LOG}(table_name);
+        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_AUDIT_LOG}_created_at ON {self.config.DB_TABLE_AUDIT_LOG}(created_at);
+        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_AUDIT_LOG}_etl_run ON {self.config.DB_TABLE_AUDIT_LOG}(etl_run_id);
+        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_INSUMOS}_updated_at ON {self.config.DB_TABLE_INSUMOS}(updated_at);
+        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_COMPOSICOES}_updated_at ON {self.config.DB_TABLE_COMPOSICOES}(updated_at);
+        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_PRECOS_INSUMOS}_updated_at ON {self.config.DB_TABLE_PRECOS_INSUMOS}(updated_at);
+        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_CUSTOS_COMPOSICOES}_updated_at ON {self.config.DB_TABLE_CUSTOS_COMPOSICOES}(updated_at);
+        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_MANUTENCOES}_data ON {self.config.DB_TABLE_MANUTENCOES}(data_referencia);
         CREATE OR REPLACE VIEW vw_composicao_itens_unificados AS
         SELECT composicao_pai_codigo, insumo_filho_codigo AS item_codigo, '{self.config.ITEM_TYPE_INSUMO}' AS tipo_item, coeficiente FROM {self.config.DB_TABLE_COMPOSICAO_INSUMOS}
         UNION ALL
@@ -206,11 +208,11 @@ class Database:
         if sinapi_versao:
             data["sinapi_versao"] = sinapi_versao
         if etl_run_id:
-            data["etl_run_id"] = etl_run_id
-        if "created_at" not in data.columns:
-            data["created_at"] = None
-        if "updated_at" not in data.columns:
-            data["updated_at"] = None
+            # Convert string run_id to proper UUID for database column
+            try:
+                data["etl_run_id"] = uuid.UUID(str(etl_run_id))
+            except (ValueError, AttributeError):
+                data["etl_run_id"] = uuid.uuid5(uuid.NAMESPACE_DNS, str(etl_run_id))
         
         if policy.lower() == self.config.DB_POLICY_REPLACE:
             year = kwargs.get("year")
@@ -246,6 +248,8 @@ class Database:
                 
                 pk_cols = [row[0] for row in pk_cols_result]
                 pk_cols_str = ", ".join(pk_cols)
+                # Deduplicate: use DISTINCT ON to avoid ON CONFLICT cardinality errors
+                pk_ordered = ", ".join([f'\"{c}\"' for c in pk_cols])
                 cols = ", ".join([f'\"{c}\"' for c in data.columns])
                 
                 # UPSERT: Insert or Update on conflict
@@ -259,7 +263,8 @@ class Database:
                 
                 insert_query = f'''
                     INSERT INTO \"{table_name}\" ({cols})
-                    SELECT {cols} FROM \"{temp_table_name}\" 
+                    SELECT DISTINCT ON ({pk_ordered}) {cols} FROM \"{temp_table_name}\"
+                    ORDER BY {pk_ordered}
                     ON CONFLICT ({pk_cols_str}) DO UPDATE SET {update_cols};
                 '''
                 conn.execute(text(insert_query))

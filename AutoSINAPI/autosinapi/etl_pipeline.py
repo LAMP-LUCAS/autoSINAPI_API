@@ -350,8 +350,10 @@ class PipelineETL:
         if missing_composicao_codes:
             self.logger.warning(f"Encontradas {len(missing_composicao_codes)} composições na estrutura que não estão no catálogo. Criando placeholders...")
             def get_detail(code, column):
-                if code in parent_codes.index: return parent_codes.loc[code, column]
-                if code in child_codes.index: return child_codes.loc[code, column]
+                if code in parent_codes.index and column in parent_codes.columns:
+                    return parent_codes.loc[code, column]
+                if code in child_codes.index and column in child_codes.columns:
+                    return child_codes.loc[code, column]
                 if column == 'descricao': return self.config.PLACEHOLDER_COMPOSICAO_DESC_TEMPLATE.format(code=code)
                 if column == 'unidade': return self.config.DEFAULT_PLACEHOLDER_UNIT
                 if column == 'grupo': return 'NAO_CLASSIFICADO'
@@ -389,15 +391,11 @@ class PipelineETL:
                 tables_loaded.append(table_name)
                 records_loaded += len(df)
 
-        # Carrega estrutura - DELETE por período em vez de TRUNCATE
-        ref_date = data_referencia
+        # Carrega estrutura - TRUNCATE + APPEND (tabelas sem coluna de data)
         for structure_name in [self.config.DB_TABLE_COMPOSICAO_INSUMOS, self.config.DB_TABLE_COMPOSICAO_SUBCOMPOSICOES]:
             if structure_name in structure_dfs and not structure_dfs[structure_name].empty:
-                # Deleta apenas registros do período
-                db.execute_non_query(
-                    f'DELETE FROM "{structure_name}" WHERE data_referencia = :ref',
-                    {"ref": ref_date}
-                )
+                db.truncate_table(structure_name)
+                df = structure_dfs[structure_name]
                 df = structure_dfs[structure_name]
                 db.save_data(df, structure_name, policy=self.config.DB_POLICY_APPEND,
                             sinapi_versao=sinapi_versao, etl_run_id=self.run_id)
@@ -513,7 +511,7 @@ class PipelineETL:
                 self.logger.warning("Arquivo de Manutenções não encontrado. Sincronização de status pulada.")
 
             # Processa famílias e coeficientes (se existirem)
-            if families_file_path:
+            if families_file_path and hasattr(processor, 'process_familias_e_coeficientes'):
                 families_dfs = processor.process_familias_e_coeficientes(str(families_file_path))
                 sinapi_versao = self.extract_sinapi_version(families_file_path.name)
                 for table_key, df in families_dfs.items():
@@ -531,7 +529,7 @@ class PipelineETL:
                         tables_updated.append(table_name)
 
             # Processa mix de mão de obra (se existir)
-            if labor_file_path:
+            if labor_file_path and hasattr(processor, 'process_mao_de_obra'):
                 labor_df = processor.process_mao_de_obra(str(labor_file_path))
                 if not labor_df.empty:
                     table_name = self.config.DB_TABLE_COMPOSICOES_MIX_MO
