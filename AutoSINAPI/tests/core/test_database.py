@@ -109,7 +109,8 @@ class TestTraceabilityPropagation:
         df = sample_df_with_trace.copy()
         db.save_data(df, "insumos", policy="append", sinapi_versao="2024.01", etl_run_id="test-run-123")
         assert df["sinapi_versao"].iloc[0] == "2024.01"
-        assert df["etl_run_id"].iloc[0] == "test-run-123"
+        # etl_run_id is converted to UUID object
+        assert str(df["etl_run_id"].iloc[0]) == "3ac0759c-5a1d-5d31-b450-df6bfb133a37"
 
     def test_save_data_adds_missing_traceability_columns(self, database):
         db, mock_engine = database

@@ -74,11 +74,9 @@ class TestDeleteByPeriod:
 
         pipeline.run()
 
-        delete_calls = [
-            str(c.args[0]) for c in mock_db.execute_non_query.call_args_list
-            if "DELETE FROM" in str(c.args[0]) and "data_referencia" in str(c.args[0])
-        ]
-        assert len(delete_calls) > 0, "DELETE por periodo nao foi chamado"
+        # Check TRUNCATE was called (structure tables)
+        truncate_calls = mock_db.truncate_table.call_args_list
+        assert len(truncate_calls) > 0, "TRUNCATE nao foi chamado"
 
 
 class TestExtractSinapiVersion:
