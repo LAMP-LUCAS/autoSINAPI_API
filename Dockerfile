@@ -10,10 +10,13 @@ ENV PYTHONUNBUFFERED 1
 # Estágio 2: Instalação de dependências
 WORKDIR /app
 COPY requirements.txt .
+# Copy AutoSINAPI toolkit before pip install for local install
+COPY ./AutoSINAPI /app/AutoSINAPI
 RUN apt-get update && \
     apt-get install -y git --no-install-recommends && \
     pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir ./AutoSINAPI && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

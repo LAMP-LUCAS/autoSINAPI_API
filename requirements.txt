@@ -10,5 +10,4 @@ pydantic-settings
 pandas
 python-dateutil
 alembic
-# Instala o toolkit autoSINAPI localmente (não do GitHub)
-./AutoSINAPI/
+# Instala o toolkit autoSINAPI via Dockerfile (./AutoSINAPI)
