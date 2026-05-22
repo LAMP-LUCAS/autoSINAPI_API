@@ -11,10 +11,17 @@ resultados do banco de dados em JSON.
 """
 from pydantic import BaseModel
 from typing import List, Optional
+from datetime import datetime
+
+# --- Traceability Mixin ---
+class TraceabilityMixin(BaseModel):
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    sinapi_versao: Optional[str] = None
 
 # --- Schemas Base (CRUD) ---
 
-class Insumo(BaseModel):
+class Insumo(TraceabilityMixin):
     """Schema para um insumo com seu preço contextual."""
     codigo: int
     descricao: str
@@ -27,7 +34,7 @@ class Insumo(BaseModel):
     class Config:
         from_attributes = True
 
-class Composicao(BaseModel):
+class Composicao(TraceabilityMixin):
     """Schema para uma composição com seu custo contextual."""
     codigo: int
     descricao: str
@@ -73,21 +80,39 @@ class CurvaABCItem(BaseModel):
     class Config:
         from_attributes = True
 
-class HistoricoCusto(BaseModel):
+class HistoricoCusto(TraceabilityMixin):
     """Schema para um ponto de dado no histórico de custo de um item."""
     data_referencia: str
     valor: float
+    foi_retificado: Optional[bool] = False
+    versao_original: Optional[str] = None
+    versao_atual: Optional[str] = None
 
     class Config:
         from_attributes = True
 
-class HistoricoManutencao(BaseModel):
+class HistoricoManutencao(TraceabilityMixin):
     """Schema para um registro de manutenção (ativação/desativação) de item."""
     item_codigo: int
     tipo_item: str
     data_referencia: str
     tipo_manutencao: str
     descricao_item: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class AuditEvent(BaseModel):
+    """Schema para um evento de auditoria no sinapi_audit_log."""
+    id: int
+    table_name: str
+    record_pk: dict
+    operation: str
+    old_values: Optional[dict] = None
+    new_values: Optional[dict] = None
+    sinapi_versao: Optional[str] = None
+    motivo_manutencao: Optional[str] = None
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

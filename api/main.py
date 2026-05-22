@@ -389,6 +389,25 @@ def get_item_maintenance_history(
         raise HTTPException(status_code=404, detail="Nenhum histórico de manutenção encontrado para este item.")
     return manutencoes
 
+
+@app.get("/api/v1/public/bi/audit/{tipo_item}/{codigo}", response_model=List[schemas.AuditEvent], tags=["Business Intelligence"])
+def get_audit_trail(
+    tipo_item: str = Path(..., description="Tipo do item: 'insumo' ou 'composicao'"),
+    codigo: int = Path(..., description="Código do item."),
+    data_referencia: str = Query(None, description="Filtrar por data de referência (AAAA-MM)."),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna o histórico completo de auditoria para um item.
+    Inclui retificações de preços, mudanças de status e modificações de estrutura.
+    """
+    if tipo_item not in ['insumo', 'composicao']:
+        raise HTTPException(status_code=400, detail="Tipo de item inválido. Use 'insumo' ou 'composicao'.")
+    audit_events = crud.get_audit_events(db, tipo_item=tipo_item, codigo=codigo, data_referencia=data_referencia)
+    if not audit_events:
+        raise HTTPException(status_code=404, detail="Nenhum evento de auditoria encontrado para este item.")
+    return audit_events
+
 @app.post("/api/v1/public/bi/curva-abc/por-classificacao", response_model=List[schemas.AbcPorClassificacao], tags=["Business Intelligence"])
 def get_abc_by_classificacao(
     codigos: List[int] = Body(..., description="Lista de códigos de composições a serem analisadas.", example=[92711, 88307]),

@@ -58,7 +58,9 @@ def get_insumo_by_codigo(
 ) -> Optional[dict]:
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
-        SELECT i.codigo, i.descricao, i.unidade, i.classificacao, i.status, p.preco_mediano, p.origem_preco
+        SELECT i.codigo, i.descricao, i.unidade, i.classificacao, i.status, 
+               p.preco_mediano, p.origem_preco,
+               i.created_at, i.updated_at, i.sinapi_versao
         FROM {settings.TABLE_INSUMOS} AS i
         JOIN {settings.TABLE_PRECOS_INSUMOS} AS p ON i.codigo = p.insumo_codigo
         WHERE i.codigo = :codigo AND i.status = :status AND p.uf = :uf
@@ -101,7 +103,9 @@ def get_composicao_by_codigo(
 ) -> Optional[dict]:
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
-        SELECT c.codigo, c.descricao, c.unidade, c.grupo, c.status, p.custo_total, p.percentual_mo
+        SELECT c.codigo, c.descricao, c.unidade, c.grupo, c.status, 
+               p.custo_total, p.percentual_mo,
+               c.created_at, c.updated_at, c.sinapi_versao
         FROM {settings.TABLE_COMPOSICOES} AS c
         JOIN {settings.TABLE_CUSTOS_COMPOSICOES} AS p ON c.codigo = p.composicao_codigo
         WHERE c.codigo = :codigo AND c.status = :status AND p.uf = :uf
@@ -420,21 +424,51 @@ def get_onde_usado(
     """
     item_type = 'INSUMO' if tipo_item == 'insumo' else 'COMPOSICAO'
     query = text(f"""
-    WITH RECURSIVE parents AS (
-        SELECT composicao_pai_codigo, coeficiente, 1 as nivel
-        FROM {settings.VIEW_COMPOSICAO_ITENS}
-        WHERE item_codigo = :codigo AND tipo_item = :item_type
-        UNION ALL
-        SELECT ci.composicao_pai_codigo, p.coeficiente * ci.coeficiente, p.nivel + 1
-        FROM {settings.VIEW_COMPOSICAO_ITENS} ci
-        JOIN parents p ON ci.item_codigo = p.composicao_pai_codigo
-        WHERE ci.tipo_item = 'COMPOSICAO' AND p.nivel < 10
-    )
-    SELECT DISTINCT c.codigo as composicao_codigo, c.descricao as composicao_descricao,
-           'COMPOSICAO' as tipo_item, p.coeficiente, p.nivel
-    FROM parents p
-    JOIN {settings.TABLE_COMPOSICOES} c ON c.codigo = p.composicao_pai_codigo
-    ORDER BY p.nivel, c.descricao
+        WITH RECURSIVE parents AS (
+            SELECT composicao_pai_codigo, coeficiente, 1 as nivel
+            FROM {settings.VIEW_COMPOSICAO_ITENS}
+            WHERE item_codigo = :codigo AND tipo_item = :item_type
+            UNION ALL
+            SELECT ci.composicao_pai_codigo, p.coeficiente * ci.coeficiente, p.nivel + 1
+            FROM {settings.VIEW_COMPOSICAO_ITENS} ci
+            JOIN parents p ON ci.item_codigo = p.composicao_pai_codigo
+            WHERE ci.tipo_item = 'COMPOSICAO' AND p.nivel < 10
+        )
+        SELECT DISTINCT c.codigo as composicao_codigo, c.descricao as composicao_descricao,
+               'COMPOSICAO' as tipo_item, p.coeficiente, p.nivel
+        FROM parents p
+        JOIN {settings.TABLE_COMPOSICOES} c ON c.codigo = p.composicao_pai_codigo
+        ORDER BY p.nivel, c.descricao
     """)
     result = db.execute(query, {"codigo": codigo, "item_type": item_type}).fetchall()
+    return [dict(r._mapping) for r in result]
+
+
+@cache_result(ttl=3600)
+def get_audit_events(
+    db: Session, tipo_item: str, codigo: int, data_referencia: str = None
+) -> List[dict]:
+    """
+    Retorna o histórico de auditoria para um item específico.
+    Cruzar record_pk com o código do item.
+    """
+    query_str = """
+        SELECT id, table_name, record_pk, operation, 
+               old_values, new_values, sinapi_versao, 
+               motivo_manutencao, created_at
+        FROM sinapi_audit_log
+        WHERE (record_pk->>'codigo' = :codigo OR 
+               record_pk->>'insumo_codigo' = :codigo OR 
+               record_pk->>'composicao_codigo' = :codigo)
+    """
+    params = {"codigo": str(codigo)}
+    
+    if data_referencia:
+        query_str += " AND record_pk->>'data_referencia' = :data_ref"
+        params["data_ref"] = data_referencia
+    
+    query_str += " ORDER BY created_at DESC LIMIT 100"
+    
+    query = text(query_str)
+    result = db.execute(query, params).fetchall()
     return [dict(r._mapping) for r in result]

@@ -1,0 +1,32 @@
+Starting Docling conversion...
+No OCR engine found. Please review the install details.
+Traceback (most recent call last):
+  File "<string>", line 9, in <module>
+  File "/usr/local/lib/python3.10/site-packages/pydantic/_internal/_validate_call.py", line 40, in wrapper_function
+    return wrapper(*args, **kwargs)
+  File "/usr/local/lib/python3.10/site-packages/pydantic/_internal/_validate_call.py", line 137, in __call__
+    res = self.__pydantic_validator__.validate_python(pydantic_core.ArgsKwargs(args, kwargs))
+  File "/home/appuser/.local/lib/python3.10/site-packages/docling/document_converter.py", line 395, in convert
+    return next(all_res)
+  File "/home/appuser/.local/lib/python3.10/site-packages/docling/document_converter.py", line 454, in convert_all
+    for conv_res in conv_res_iter:
+  File "/home/appuser/.local/lib/python3.10/site-packages/docling/document_converter.py", line 571, in _convert
+    for item in map(
+  File "/home/appuser/.local/lib/python3.10/site-packages/docling/document_converter.py", line 618, in _process_document
+    conv_res = self._execute_pipeline(in_doc, raises_on_error=raises_on_error)
+  File "/home/appuser/.local/lib/python3.10/site-packages/docling/document_converter.py", line 639, in _execute_pipeline
+    pipeline = self._get_pipeline(in_doc.format)
+  File "/home/appuser/.local/lib/python3.10/site-packages/docling/document_converter.py", line 601, in _get_pipeline
+    self.initialized_pipelines[cache_key] = pipeline_class(
+  File "/home/appuser/.local/lib/python3.10/site-packages/docling/pipeline/standard_pdf_pipeline.py", line 467, in __init__
+    self._init_models()
+  File "/home/appuser/.local/lib/python3.10/site-packages/docling/pipeline/standard_pdf_pipeline.py", line 498, in _init_models
+    self.table_model = table_factory.create_instance(
+  File "/home/appuser/.local/lib/python3.10/site-packages/docling/models/factories/base_factory.py", line 57, in create_instance
+    return _cls(options=options, **kwargs)
+  File "/home/appuser/.local/lib/python3.10/site-packages/docling/models/stages/table_structure/table_structure_model.py", line 76, in __init__
+    from docling_ibm_models.tableformer.data_management.tf_predictor import (
+  File "/home/appuser/.local/lib/python3.10/site-packages/docling_ibm_models/tableformer/data_management/tf_predictor.py", line 9, in <module>
+    import cv2
+ImportError: libGL.so.1: cannot open shared object file: No such file or directory
+-> Cannot close object, library is destroyed. This may cause a memory leak!

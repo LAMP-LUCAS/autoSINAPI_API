@@ -1,0 +1,36 @@
+--- PyMuPDF (fitz) Extraction (Page 1-2) ---
+
+[PAGE 1]
+ 
+ 
+SINAPI 
+SISTEMA NACIONAL DE PESQUISA DE 
+CUSTOS E ÍNDICES DA CONSTRUÇÃO CIVIL 
+ 
+CADERNO TÉCNICO DE COMPOSIÇÕES 
+ACESSIBILIDADE 
+Aferido em: 03/2024 
+Última Atualização: 02/2025 
+ 
+
+
+[PAGE 2]
+ 
+CADERNO TÉCNICO DE COMPOSIÇÕES SINAPI 
+ 
+ 
+ACESSIBILIDADE 
+2 
+ 
+HISTÓRICO DE REVISÕES 
+Data 
+Revisão 
+01/2025 
+Correção da unidade do insumo 44070 - FORMA METALICA PARA PILARES CIRCULARES, 
+INCLUSO ELEMENTOS DE TRAVAMENTO DAS FORMAS (LOCACAO)  de M2 / MES para 
+M2x MES, nas composições 96262 e 92264. 
+02/2025 
+- Substituição do insumo 39964 pelo insumo  45655 na composição 98678.  
+ 
+ 
+
