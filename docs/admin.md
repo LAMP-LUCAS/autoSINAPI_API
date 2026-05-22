@@ -45,14 +45,39 @@ Após a execução, a API retornará uma mensagem de sucesso e um `task_id` para
 
 ## 2. Gerenciamento de Usuários e Chaves de API
 
-O gerenciamento de usuários (Consumers) e suas chaves de API é realizado através do Kong Gateway, que atua como a camada de autenticação e gerenciamento de tráfego para a AutoSINAPI API.
+O gerenciamento de usuários (Consumers) e suas chaves de API é realizado através da Admin API do Kong Gateway, que atua como a camada de autenticação.
 
-Para criar Consumers e associar chaves de API (como `X-API-KEY`), você precisará interagir com a [Admin API do Kong](https://docs.konghq.com/gateway/latest/admin-api/):
+Abaixo estão os comandos `curl` para as operações mais comuns.
 
-*   **Criação de Consumer:** Utilize o endpoint `/consumers` da Admin API do Kong.
-*   **Associação de Chave de API:** Após criar um Consumer, utilize o endpoint `/consumers/{consumer_id}/key-auth` para provisionar uma chave de API para ele.
+### 2.1. Criar um Novo Usuário (Consumer)
 
-Consulte a documentação oficial do Kong para obter instruções detalhadas e exemplos de como usar a Admin API para essas operações.
+```bash
+curl -X POST http://localhost:8001/consumers/ --data "username=meu-usuario"
+```
+*Substitua `meu-usuario` pelo nome de usuário desejado.*
+
+### 2.2. Gerar uma Chave de API para um Usuário
+
+```bash
+curl -X POST http://localhost:8001/consumers/meu-usuario/key-auth/
+```
+*Este comando irá retornar a chave de API (`key`) que deverá ser usada no cabeçalho `X-API-KEY` das requisições.*
+
+### 2.3. Listar Chaves de um Usuário
+
+```bash
+curl -X GET http://localhost:8001/consumers/meu-usuario/key-auth/
+```
+
+### 2.4. Deletar uma Chave de API
+
+```bash
+curl -X DELETE http://localhost:8001/consumers/meu-usuario/key-auth/{key_id}
+```
+*Substitua `{key_id}` pelo ID da chave que você deseja remover.*
+
+Para mais detalhes e outras operações, consulte a [documentação oficial da Admin API do Kong](https://docs.konghq.com/gateway/latest/admin-api/).
+
 
 ## 3. Outras Tarefas de Gerenciamento
 

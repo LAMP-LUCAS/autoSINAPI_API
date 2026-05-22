@@ -1,7 +1,7 @@
 # 🚀 autoSINAPI API: A sua ponte para os dados do SINAPI.
 
-[![Versão](https://img.shields.io/badge/version-alpha1-blue.svg)](https://github.com/LAMP-LUCAS/autoSINAPI_API)
-[![Licença](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Versão](https://img.shields.io/badge/version-v0.1.0--beta.0-orange.svg)](https://github.com/LAMP-LUCAS/autoSINAPI_API)
+[![Licença](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)](https://www.docker.com/)
 [![Powered by: FastAPI](https://img.shields.io/badge/Powered%20by-FastAPI-green?logo=fastapi)](https://fastapi.tiangolo.com/)
 
@@ -72,8 +72,8 @@ Tenha sua própria instância da API, com banco de dados e toda a infraestrutura
     curl -X POST http://localhost:8001/consumers/meu-usuario/key-auth/
 
     # 3. Faça sua primeira consulta! (substitua SUA_CHAVE_AQUI)
-    curl -X GET "http://localhost:8000/api/v1/ufs/sp/municipios" \
-      -H "apikey: SUA_CHAVE_AQUI"
+    curl -X GET "http://localhost:8000/" \
+      -H "X-API-KEY: SUA_CHAVE_AQUI"
     ```
     **Pronto!** Explore todos os outros endpoints na documentação interativa em [http://localhost:8000/docs](http://localhost:8000/docs).
 
