@@ -1,10 +1,29 @@
 /** @file Módulo do Modal de Detalhes (Histórico + BOM + Man-Hours + Otimização) */
 import { createChartConfig, getChartTheme, hexToRgba } from '../utils.js';
 
-export function createModal(config, state, dom, utils, api, toast) {
+export function createModal(config, state, dom, utils, api, toast, heatmap) {
   let historyChartInstance = null;
   let bomViewMode = 'cards';
   let bomDataCache = [];
+  let currentItemData = null;
+  let currentTipo = null;
+  let lastFocusedElement = null;
+
+  function trapFocus(event) {
+    const focusable = dom.detailModal?.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (!focusable || focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.key === 'Tab') {
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+  }
 
   function cleanup() {
     if (historyChartInstance) {
@@ -12,6 +31,15 @@ export function createModal(config, state, dom, utils, api, toast) {
       historyChartInstance = null;
     }
     bomDataCache = [];
+    if (state.heatmap) state.heatmap.data = null;
+    if (state.heatmap && state.heatmap.chart) {
+      state.heatmap.chart.destroy();
+      state.heatmap.chart = null;
+    }
+    if (state.heatmap && state.heatmap.map) {
+      state.heatmap.map.remove();
+      state.heatmap.map = null;
+    }
   }
 
   function setBomView(mode) {
@@ -61,7 +89,14 @@ export function createModal(config, state, dom, utils, api, toast) {
 
     dom.detailModal?.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
+    lastFocusedElement = document.activeElement;
     cleanup();
+
+    setTimeout(() => {
+      const closeBtn = dom.detailModal?.querySelector('.modal-close');
+      if (closeBtn) closeBtn.focus();
+    }, 100);
+    dom.detailModal?.addEventListener('keydown', trapFocus);
 
     // Reset state
     if (dom.bomGrid) dom.bomGrid.innerHTML = '';
@@ -102,6 +137,8 @@ export function createModal(config, state, dom, utils, api, toast) {
       const itemUrl = `${config.API_BASE}/${tipoPlural}/${encodeURIComponent(codigo)}?uf=${uf}&data_referencia=${date}&regime=${encodeURIComponent(regime)}`;
       const itemData = await api.request(itemUrl);
 
+      currentItemData = itemData;
+      currentTipo = tipoSingular;
       const valor = tipoSingular === 'insumo' ? (itemData.preco_mediano || 0) : (itemData.custo_total || 0);
 
       if (dom.modalTitle) dom.modalTitle.textContent = tipoSingular === 'insumo' ? 'Detalhes do Insumo' : 'Detalhes da Composição';
@@ -180,14 +217,21 @@ export function createModal(config, state, dom, utils, api, toast) {
         chartContainer.innerHTML = '<p class="empty-state">Sem dados históricos disponíveis.</p>';
       }
 
-      // Fetch Maintenance History (1.7)
+      // Fetch Maintenance History (1.7) — silent 404 is expected
       if (dom.maintenanceSection) dom.maintenanceSection.classList.add('hidden');
       if (dom.maintenanceContainer) dom.maintenanceContainer.innerHTML = '';
       const maintUrl = `${config.API_BASE}/bi/item/${tipoSingular}/${encodeURIComponent(codigo)}/manutencoes`;
-      const maintData = await api.request(maintUrl).catch((err) => {
-        if (err.message !== '404') console.warn('[Modal] Maintenance fetch failed:', err);
-        return null;
-      });
+      let maintData = null;
+      try {
+        const resp = await fetch(maintUrl);
+        if (resp.ok) {
+          maintData = await resp.json();
+        } else if (resp.status !== 404) {
+          console.warn('[Modal] Maintenance fetch failed:', resp.status, await resp.text().catch(() => ''));
+        }
+      } catch (err) {
+        console.warn('[Modal] Maintenance fetch network error:', err);
+      }
 
       if (maintData && maintData.length > 0 && dom.maintenanceSection && dom.maintenanceContainer) {
         dom.maintenanceSection.classList.remove('hidden');
@@ -198,6 +242,12 @@ export function createModal(config, state, dom, utils, api, toast) {
             <span class="maint-desc">${utils.escapeHtml(m.descricao_item || '')}</span>
           </div>
         `).join('');
+      }
+
+      // Heatmap Regional (1.11)
+      dom.heatmapSection?.classList.add('hidden');
+      if (heatmap) {
+        heatmap.render(codigo, tipoSingular, date, regime);
       }
 
       // Composition-specific data
@@ -427,6 +477,113 @@ export function createModal(config, state, dom, utils, api, toast) {
     `;
   }
 
+  function exportPdf() {
+    if (!currentItemData || bomDataCache.length === 0) {
+      toast.show('Nenhum dado de BOM disponível para exportar.', 'warning');
+      return;
+    }
+    try {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+
+      let y = 15;
+      doc.setFontSize(16);
+      doc.setTextColor(37, 99, 235);
+      doc.text('AutoSINAPI — Detalhes da Composição', pageW / 2, y, { align: 'center' });
+      y += 10;
+
+      doc.setFontSize(10);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, pageW - 15, y, { align: 'right' });
+      y += 8;
+
+      doc.setDrawColor(37, 99, 235);
+      doc.setLineWidth(0.5);
+      doc.line(15, y, pageW - 15, y);
+      y += 6;
+
+      doc.setFontSize(11);
+      doc.setTextColor(30, 41, 59);
+      doc.setFont(undefined, 'bold');
+      doc.text(`${currentItemData.descricao || 'Sem descrição'}`, 15, y);
+      y += 5;
+      doc.setFont(undefined, 'normal');
+
+      const meta = [
+        `Código: ${currentItemData.codigo || ''}`,
+        `UF: ${dom.modalUf?.textContent || '-'}`,
+        `Referência: ${dom.modalRef?.textContent || '-'}`,
+        `Regime: ${dom.modalRegime?.textContent || '-'}`,
+        `Unidade: ${currentItemData.unidade || '-'}`,
+      ];
+      const metaStr = meta.join('  |  ');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(metaStr, 15, y);
+      y += 5;
+
+      doc.setFontSize(14);
+      doc.setTextColor(30, 41, 59);
+      doc.setFont(undefined, 'bold');
+      doc.text('Estrutura Analítica (BOM)', 15, y);
+      y += 6;
+
+      const tableBody = bomDataCache.map(item => [
+        item.nivel?.toString() || '1',
+        item.item_codigo?.toString() || '',
+        item.tipo_item === 'COMPOSICAO' ? 'COMP' : 'INS',
+        item.descricao || '',
+        item.unidade || '',
+        (item.coeficiente_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }),
+        'R$ ' + (item.custo_impacto_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      ]);
+
+      doc.autoTable({
+        startY: y,
+        head: [['Nível', 'Código', 'Tipo', 'Descrição', 'Un.', 'Coeficiente', 'Impacto']],
+        body: tableBody,
+        theme: 'grid',
+        headStyles: { fillColor: [37, 99, 235], textColor: 255, fontSize: 8, fontStyle: 'bold' },
+        bodyStyles: { fontSize: 7, textColor: [30, 41, 59] },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          0: { cellWidth: 12, halign: 'center' },
+          1: { cellWidth: 18, halign: 'center' },
+          2: { cellWidth: 12, halign: 'center' },
+          3: { cellWidth: 'auto' },
+          4: { cellWidth: 12, halign: 'center' },
+          5: { cellWidth: 22, halign: 'right' },
+          6: { cellWidth: 28, halign: 'right' },
+        },
+        margin: { left: 15, right: 15 },
+        didDrawPage: (data) => {
+          doc.setFontSize(7);
+          doc.setTextColor(148, 163, 184);
+          doc.text(`AutoSINAPI — Página ${doc.internal.getNumberOfPages()}`, pageW / 2, 290, { align: 'center' });
+        },
+      });
+
+      y = doc.lastAutoTable.finalY + 8;
+
+      const totalImpacto = bomDataCache.reduce((s, i) => s + (i.custo_impacto_total || 0), 0);
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59);
+      doc.setFont(undefined, 'bold');
+      doc.text(`Custo Total BOM: R$ ${totalImpacto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 15, y);
+      if (currentItemData.custo_total != null) {
+        const oficial = Number(currentItemData.custo_total) || 0;
+        doc.text(`Custo Oficial: R$ ${oficial.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, pageW - 15, y, { align: 'right' });
+      }
+
+      doc.save(`autosinapi-bom-${currentItemData.codigo || 'export'}.pdf`);
+      toast.show('PDF exportado com sucesso!', 'success');
+    } catch (err) {
+      console.error('[Modal] PDF export failed:', err);
+      toast.show('Erro ao exportar PDF.', 'error');
+    }
+  }
+
   function exportChart() {
     if (!dom.historyChart) return;
     try {
@@ -441,8 +598,13 @@ export function createModal(config, state, dom, utils, api, toast) {
   function close() {
     dom.detailModal?.classList.add('hidden');
     document.body.style.overflow = 'auto';
+    dom.detailModal?.removeEventListener('keydown', trapFocus);
     cleanup();
+    if (lastFocusedElement) {
+      lastFocusedElement.focus();
+      lastFocusedElement = null;
+    }
   }
 
-  return { show, close, setBomView, exportChart, filterBom };
+  return { show, close, setBomView, exportChart, filterBom, exportPdf };
 }

@@ -7,12 +7,14 @@
     <meta name="theme-color" content="#2563eb">
     <title>AutoSINAPI | API de Custos da Construção Civil</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
 
@@ -30,7 +32,9 @@
                 <a href="#hero">Início</a>
                 <a href="#pesquisa">Pesquisa & BOM</a>
                 <a href="#bi">Curva ABC</a>
-                <a href="#comparativo">Comparativo Regional</a>
+                <a href="#tendencias">Tendências</a>
+                <a href="#comparativo">Regional</a>
+                <a href="#comparacao-cruzada">Comparação</a>
             </nav>
             <div class="nav-actions">
                 <button id="themeToggle" class="btn-icon" aria-label="Alternar modo escuro" title="Alternar tema">
@@ -48,7 +52,9 @@
             <a href="#hero" class="mobile-menu-link">Início</a>
             <a href="#pesquisa" class="mobile-menu-link">Pesquisa & BOM</a>
             <a href="#bi" class="mobile-menu-link">Curva ABC</a>
+            <a href="#tendencias" class="mobile-menu-link">Tendências</a>
             <a href="#comparativo" class="mobile-menu-link">Comparativo Regional</a>
+            <a href="#comparacao-cruzada" class="mobile-menu-link">Comparação Cruzada</a>
         </nav>
     </header>
 
@@ -328,6 +334,66 @@
             </div>
         </section>
 
+        <!-- Tool 3a: Tendências de Volatilidade (Sprint 1c) -->
+        <section id="tendencias" class="tool-section" aria-labelledby="tendencias-title">
+            <div class="section-header">
+                <h2 id="tendencias-title" class="section-title">Tendências de Volatilidade</h2>
+                <p class="section-subtitle">Visualize a evolução mensal de preços por categoria de insumo. Identifique tendências de alta ou baixa em classes de materiais.</p>
+                <div class="api-endpoint" role="note" aria-label="Endpoint da API utilizado">
+                    <code>GET /api/v1/public/bi/tendencias/por-classificacao?uf={uf}&data_referencia={data}&regime={regime}&meses=12</code>
+                </div>
+            </div>
+
+            <form id="trendsForm">
+                <div class="search-filters" style="justify-content: center;">
+                    <div class="filter-col">
+                        <label for="trendsStateFilter">Estado (UF)</label>
+                        <select id="trendsStateFilter" class="dynamic-uf"><option value="">Carregando...</option></select>
+                    </div>
+                    <div class="filter-col">
+                        <label for="trendsDateFilter">Referência</label>
+                        <select id="trendsDateFilter" class="dynamic-date"><option value="">Carregando...</option></select>
+                    </div>
+                    <div class="filter-col">
+                        <label for="trendsRegimeFilter">Regime</label>
+                        <select id="trendsRegimeFilter" class="dynamic-regime"><option value="">Carregando...</option></select>
+                    </div>
+                    <button type="submit" id="trendsBtn" style="margin-top: 1.5rem;" aria-label="Analisar Tendências">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        <span>Analisar Tendências</span>
+                    </button>
+                </div>
+            </form>
+
+            <div id="trendsSkeleton" class="skeleton-abc hidden" aria-hidden="true">
+                <div class="skeleton-chart shimmer"></div>
+                <div class="skeleton-table shimmer"></div>
+            </div>
+
+            <div id="trendsResults" class="trends-results hidden" aria-live="polite">
+                <div class="chart-container" id="trendsChartContainer">
+                    <canvas id="trendsChart" role="img" aria-label="Gráfico de tendências por classificação"></canvas>
+                </div>
+                <div class="trends-table-container" id="trendsTableContainer">
+                    <h4>Inflação Acumulada por Categoria</h4>
+                    <div class="data-table-wrapper">
+                        <table class="data-table" id="trendsTable" role="table" aria-label="Tabela de inflação por categoria">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Classificação</th>
+                                    <th scope="col">Qtd. Insumos</th>
+                                    <th scope="col">Preço Inicial</th>
+                                    <th scope="col">Preço Final</th>
+                                    <th scope="col">Variação (%)</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Tool 3: Comparativo Regional -->
         <section id="comparativo" class="tool-section" aria-labelledby="comparativo-title">
             <div class="section-header">
@@ -427,9 +493,94 @@
                 </div>
                 <div class="chart-container compare-chart-container">
                     <canvas id="compareChart" role="img" aria-label="Gráfico comparativo regional"></canvas>
+            </div>
+        </section>
+
+        <!-- Tool 5: Comparação Cruzada de Composições (Sprint 1c) -->
+        <section id="comparacao-cruzada" class="tool-section alt-bg" aria-labelledby="comparacao-title">
+            <div class="section-header">
+                <h2 id="comparacao-title" class="section-title">Comparação Cruzada de Composições</h2>
+                <p class="section-subtitle">Compare lado a lado a estrutura de custos de duas composições diferentes. Identifique diferenças de insumos, quantitativos e impacto financeiro.</p>
+            </div>
+
+            <form id="comparisonForm">
+                <div class="search-bar-row" style="justify-content: center;">
+                    <div class="filter-col">
+                        <label for="comparisonCode1">Código Comp. 1</label>
+                        <input type="number" id="comparisonCode1" placeholder="Ex: 92711" min="1" aria-label="Código da primeira composição">
+                    </div>
+                    <div class="filter-col">
+                        <label for="comparisonCode2">Código Comp. 2</label>
+                        <input type="number" id="comparisonCode2" placeholder="Ex: 88309" min="1" aria-label="Código da segunda composição">
+                    </div>
+                    <div class="filter-col">
+                        <label for="comparisonUfFilter">UF</label>
+                        <select id="comparisonUfFilter" class="dynamic-uf"><option value="">SP</option></select>
+                    </div>
+                    <div class="filter-col">
+                        <label for="comparisonDateFilter">Referência</label>
+                        <select id="comparisonDateFilter" class="dynamic-date"><option value="">Carregando...</option></select>
+                    </div>
+                    <div class="filter-col">
+                        <label for="comparisonRegimeFilter">Regime</label>
+                        <select id="comparisonRegimeFilter" class="dynamic-regime"><option value="">Carregando...</option></select>
+                    </div>
+                    <button type="submit" id="comparisonBtn" style="margin-top: 1.5rem;" aria-label="Comparar composições">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                        <span>Comparar</span>
+                    </button>
+                </div>
+            </form>
+
+            <div id="comparisonSkeleton" class="skeleton-abc hidden" aria-hidden="true">
+                <div class="skeleton-table shimmer"></div>
+                <div class="skeleton-chart shimmer"></div>
+            </div>
+
+            <div id="comparisonResults" class="comparison-results hidden" aria-live="polite">
+                <div class="comparison-grid">
+                    <div class="comparison-side">
+                        <h4 id="comparisonName1" class="comparison-name">Composição 1</h4>
+                        <div class="data-table-wrapper">
+                            <table class="data-table" role="table" aria-label="BOM da composição 1">
+                                <thead>
+                                    <tr><th scope="col">Insumo</th><th scope="col">Tipo</th><th scope="col">Un.</th><th scope="col">Custo</th></tr>
+                                </thead>
+                                <tbody id="comparisonLeftTable"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="comparison-side">
+                        <h4 id="comparisonName2" class="comparison-name">Composição 2</h4>
+                        <div class="data-table-wrapper">
+                            <table class="data-table" role="table" aria-label="BOM da composição 2">
+                                <thead>
+                                    <tr><th scope="col">Insumo</th><th scope="col">Tipo</th><th scope="col">Un.</th><th scope="col">Custo</th></tr>
+                                </thead>
+                                <tbody id="comparisonRightTable"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="comparison-delta">
+                    <h4>Diferenças Item a Item</h4>
+                    <div class="data-table-wrapper">
+                        <table class="data-table" id="comparisonDelta" role="table" aria-label="Tabela de diferenças">
+                            <thead>
+                                <tr><th scope="col">Insumo</th><th scope="col">Tipo</th><th scope="col">Un.</th><th scope="col">Comp. 1</th><th scope="col">Comp. 2</th><th scope="col">Diferença</th><th scope="col">%</th></tr>
+                            </thead>
+                            <tbody id="comparisonDeltaTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="chart-container" style="max-width: 500px; margin: 1rem auto;">
+                    <canvas id="comparisonChart" role="img" aria-label="Gráfico comparativo de composições"></canvas>
                 </div>
             </div>
         </section>
+
     </main>
 
     <!-- Admin Section (hidden, visible via ?admin=true) -->
@@ -557,6 +708,21 @@
                         <div id="maintenanceContainer" class="maintenance-timeline"></div>
                     </div>
 
+                    <div class="modal-card heatmap-card hidden" id="heatmapSection">
+                        <h4>Mapa de Calor Regional</h4>
+                        <div class="heatmap-legend" aria-label="Legenda das regiões">
+                            <span class="heatmap-legend-item"><span class="heatmap-dot" style="background:#3498db"></span>Norte</span>
+                            <span class="heatmap-legend-item"><span class="heatmap-dot" style="background:#e74c3c"></span>Nordeste</span>
+                            <span class="heatmap-legend-item"><span class="heatmap-dot" style="background:#f1c40f"></span>C.Oeste</span>
+                            <span class="heatmap-legend-item"><span class="heatmap-dot" style="background:#2ecc71"></span>Sudeste</span>
+                            <span class="heatmap-legend-item"><span class="heatmap-dot" style="background:#9b59b6"></span>Sul</span>
+                        </div>
+                        <div id="heatmapMap" class="heatmap-map-container hidden"></div>
+                        <div class="chart-container heatmap-chart-container" style="max-height: 300px;">
+                            <canvas id="heatmapChart" role="img" aria-label="Mapa de calor regional de preços ordenado por região geográfica"></canvas>
+                        </div>
+                    </div>
+
                     <div class="modal-card manhours-card" id="manHoursSection">
                         <h4>Hora/Homem Total</h4>
                         <div class="man-hours-display">
@@ -599,8 +765,8 @@
                     </div>
                 </div>
             </div>
-                </div>
-            </form>
+        </div>
+    </div>
 
     <!-- Toast Notifications -->
     <div id="toast" class="toast" role="alert" aria-live="assertive"></div>

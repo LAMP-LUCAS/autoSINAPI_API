@@ -99,3 +99,38 @@ class AbcPorClassificacao(BaseModel):
 
     class Config:
         from_attributes = True
+
+class TendenciaClassificacao(BaseModel):
+    """Schema para um ponto de tendência de preço por classificação."""
+    classificacao: str
+    mes: str
+    preco_medio: float
+    qtd_insumos: int
+
+    class Config:
+        from_attributes = True
+
+class PrecoPorUF(BaseModel):
+    """Schema para o preço de um item em uma UF específica."""
+    uf: str
+    valor: float
+
+    class Config:
+        from_attributes = True
+
+class ComposicaoProdutividade(BaseModel):
+    """Schema para análise de produtividade de uma composição."""
+    total_custo: float
+    mao_de_obra: float
+    material: float
+    equipamento: float
+    total_hh: float
+    custo_por_hh: Optional[float] = None
+
+class InsumoOndeUsado(BaseModel):
+    """Schema para um item na lista 'onde é usado'."""
+    composicao_codigo: int
+    composicao_descricao: str
+    tipo_item: str
+    coeficiente: float
+    nivel: int

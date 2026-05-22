@@ -165,7 +165,9 @@ export function createABC(config, state, dom, utils, api, toast) {
           plugins: { legend: { labels: { color: textColor } } }
         }
       };
-      state.abc.chart = new Chart(dom.abcChart.getContext('2d'), chartConfig);
+      const ctx1 = dom.abcChart.getContext('2d');
+      Chart.getChart(ctx1.canvas)?.destroy();
+      state.abc.chart = new Chart(ctx1, chartConfig);
     }
   }
 
@@ -237,7 +239,9 @@ export function createABC(config, state, dom, utils, api, toast) {
           plugins: { legend: { display: false } }
         }
       };
-      state.abc.chart = new Chart(dom.abcChart.getContext('2d'), chartConfig);
+      const ctx2 = dom.abcChart.getContext('2d');
+      Chart.getChart(ctx2.canvas)?.destroy();
+      state.abc.chart = new Chart(ctx2, chartConfig);
     }
   }
 

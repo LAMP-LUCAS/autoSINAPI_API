@@ -2,6 +2,7 @@ import json
 import redis
 import functools
 import logging
+from typing import Optional
 from .config import settings
 from .sandbox_utils import is_sandbox_mode
 
@@ -14,6 +15,28 @@ redis_client = redis.Redis(
     db=0, 
     decode_responses=True
 )
+
+def invalidate_cache(pattern: str):
+    """
+    Invalida todas as chaves de cache que correspondem a um padrão.
+    Ex: invalidate_cache("cache:get_insumo_by_codigo:*") limpa cache de insumo.
+    """
+    try:
+        cursor = 0
+        deleted = 0
+        while True:
+            cursor, keys = redis_client.scan(cursor=cursor, match=pattern, count=100)
+            if keys:
+                redis_client.delete(*keys)
+                deleted += len(keys)
+            if cursor == 0:
+                break
+        if deleted:
+            logger.info(f"Cache invalidated: {deleted} keys matching '{pattern}'")
+        return deleted
+    except Exception as e:
+        logger.warning(f"Erro ao invalidar cache com padrão '{pattern}': {e}")
+        return 0
 
 def cache_result(ttl: int = settings.CACHE_DEFAULT_TTL):
     """

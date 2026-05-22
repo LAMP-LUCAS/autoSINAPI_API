@@ -3,15 +3,14 @@ export function createApi(config, toast, utils, state, dom) {
   const BASE = config.API_BASE;
 
   async function request(url, options = {}) {
-    try {
-      const response = await fetch(url, options);
-      const body = await response.json().catch(() => ({ message: `HTTP ${response.status}` }));
-      if (!response.ok) throw new Error(body.message || `HTTP ${response.status}`);
-      return body;
-    } catch (error) {
-      toast.show(`Erro: ${error.message}`, 'error');
-      throw error;
+    const response = await fetch(url, options);
+    const body = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+    if (!response.ok) {
+      const errMsg = body.detail || body.message || `HTTP ${response.status}`;
+      console.error(`[API] ${response.status} ${url}: ${errMsg}`);
+      throw new Error(errMsg);
     }
+    return body;
   }
 
   function updateFilterVisibility() {
@@ -59,6 +58,12 @@ export function createApi(config, toast, utils, state, dom) {
       populate(dom.abcRegimeFilter, state.filters.regimes);
       populate(dom.compareDateFilter, state.filters.dates);
       populate(dom.compareRegimeFilter, state.filters.regimes);
+      populate(dom.trendsStateFilter, state.filters.ufs);
+      populate(dom.trendsDateFilter, state.filters.dates);
+      populate(dom.trendsRegimeFilter, state.filters.regimes);
+      populate(dom.comparisonUfFilter, state.filters.ufs);
+      populate(dom.comparisonDateFilter, state.filters.dates);
+      populate(dom.comparisonRegimeFilter, state.filters.regimes);
 
       if (dom.stateFilter) dom.stateFilter.value = utils.getDefaultUf();
       if (dom.dateFilter) dom.dateFilter.value = utils.getDefaultDate();
@@ -70,6 +75,12 @@ export function createApi(config, toast, utils, state, dom) {
       if (dom.abcRegimeFilter) dom.abcRegimeFilter.value = utils.getDefaultRegime();
       if (dom.compareDateFilter) dom.compareDateFilter.value = utils.getDefaultDate();
       if (dom.compareRegimeFilter) dom.compareRegimeFilter.value = utils.getDefaultRegime();
+      if (dom.trendsStateFilter) dom.trendsStateFilter.value = 'SP';
+      if (dom.trendsDateFilter) dom.trendsDateFilter.value = utils.getDefaultDate();
+      if (dom.trendsRegimeFilter) dom.trendsRegimeFilter.value = utils.getDefaultRegime();
+      if (dom.comparisonUfFilter) dom.comparisonUfFilter.value = 'SP';
+      if (dom.comparisonDateFilter) dom.comparisonDateFilter.value = utils.getDefaultDate();
+      if (dom.comparisonRegimeFilter) dom.comparisonRegimeFilter.value = utils.getDefaultRegime();
 
       if (dom.stateChips && state.filters.ufs.length > 0) {
         dom.stateChips.innerHTML = state.filters.ufs.map(uf =>
@@ -83,6 +94,20 @@ export function createApi(config, toast, utils, state, dom) {
       state.filters.ufs = ['SP', 'RJ', 'MG', 'PR', 'SC', 'RS', 'BA', 'PE', 'GO'];
       state.filters.dates = [utils.getDefaultDate()];
       state.filters.regimes = ['DESONERADO', 'NAO_DESONERADO', 'SEM_ENCARGOS'];
+      populate(dom.stateFilter, state.filters.ufs);
+      populate(dom.dateFilter, state.filters.dates);
+      populate(dom.regimeFilter, state.filters.regimes);
+      populate(dom.abcStateFilter, state.filters.ufs);
+      populate(dom.abcDateFilter, state.filters.dates);
+      populate(dom.abcRegimeFilter, state.filters.regimes);
+      populate(dom.compareDateFilter, state.filters.dates);
+      populate(dom.compareRegimeFilter, state.filters.regimes);
+      populate(dom.trendsStateFilter, state.filters.ufs);
+      populate(dom.trendsDateFilter, state.filters.dates);
+      populate(dom.trendsRegimeFilter, state.filters.regimes);
+      populate(dom.comparisonUfFilter, state.filters.ufs);
+      populate(dom.comparisonDateFilter, state.filters.dates);
+      populate(dom.comparisonRegimeFilter, state.filters.regimes);
     }
   }
 

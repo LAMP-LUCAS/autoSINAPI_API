@@ -8,12 +8,18 @@ orquestrando as chamadas para as funções do módulo `crud` e utilizando os
 """
 
 import os
+import json
+import time
+import logging
 import redis
 from celery.result import AsyncResult
 from .sandbox_utils import is_sandbox_mode
 from typing import List
-from fastapi import FastAPI, Depends, HTTPException, Query, Body, Path
+from fastapi import FastAPI, Depends, HTTPException, Query, Body, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
@@ -21,9 +27,36 @@ from dateutil.relativedelta import relativedelta
 from . import crud, schemas, config
 from .database import get_db
 from .tasks import populate_sinapi_task
+from .cache_utils import redis_client as cache_redis
 
 # Carrega as configurações uma vez
 settings = config.settings
+
+# Structured Logging
+class JSONLogFormatter(logging.Formatter):
+    def format(self, record):
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if hasattr(record, "endpoint"):
+            log_entry["endpoint"] = record.endpoint
+        if hasattr(record, "duration"):
+            log_entry["duration_ms"] = round(record.duration * 1000, 2)
+        if record.exc_info and record.exc_info[0]:
+            log_entry["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_entry, ensure_ascii=False)
+
+# Configure root logger with JSON format
+json_handler = logging.StreamHandler()
+json_handler.setFormatter(JSONLogFormatter())
+root_logger = logging.getLogger()
+root_logger.handlers = [json_handler]
+root_logger.setLevel(logging.INFO)
+
+logger = logging.getLogger("autosinapi.api")
 
 app = FastAPI(
     title="AutoSINAPI API",
@@ -33,11 +66,51 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.ALLOWED_ORIGINS.split(",") if settings.ALLOWED_ORIGINS != "*" else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve static GeoJSON data
+import os
+_data_dir = os.path.join(os.path.dirname(__file__), "..", "demo", "data")
+if os.path.isdir(_data_dir):
+    app.mount("/api/v1/public/data/geo", StaticFiles(directory=_data_dir), name="data")
+
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration = time.time() - start
+    extra = {"endpoint": request.url.path, "duration": duration}
+    logger.info(f"{request.method} {request.url.path} {response.status_code}", extra=extra)
+    return response
+
+@app.get("/api/v1/public/health", tags=["Health"])
+def health_check(db: Session = Depends(get_db)):
+    """
+    Health check endpoint. Retorna status do banco, Redis e versão da API.
+    """
+    checks = {"status": "healthy", "version": "1.0.0", "timestamp": datetime.utcnow().isoformat() + "Z"}
+
+    try:
+        db.execute(text("SELECT 1"))
+        checks["database"] = "connected"
+    except Exception as e:
+        checks["database"] = f"error: {str(e)}"
+        checks["status"] = "degraded"
+
+    try:
+        cache_redis.ping()
+        checks["redis"] = "connected"
+    except Exception as e:
+        checks["redis"] = f"error: {str(e)}"
+        checks["status"] = "degraded"
+
+    status_code = 200 if checks["status"] == "healthy" else 503
+    return JSONResponse(content=checks, status_code=status_code)
 
 # Conexão direta com Redis para lock de tarefas (idempotência)
 redis_client = redis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=6379, db=0)
@@ -161,10 +234,7 @@ def search_insumos(
     Busca insumos pela descrição e retorna seus preços para um determinado contexto.
     Opcionalmente filtra por classificação.
     """
-    insumos = crud.search_insumos_by_descricao(db, q=q, uf=uf, data_referencia=data_referencia, regime=regime, skip=skip, limit=limit)
-    if classificacao and insumos:
-        classificacao_upper = classificacao.upper()
-        insumos = [i for i in insumos if i.classificacao and i.classificacao.upper() == classificacao_upper]
+    insumos = crud.search_insumos_by_descricao(db, q=q, uf=uf, data_referencia=data_referencia, regime=regime, skip=skip, limit=limit, classificacao=classificacao)
     return insumos
 
 
@@ -199,10 +269,7 @@ def search_composicoes(
     Busca composições pela descrição e retorna seus custos para um determinado contexto.
     Opcionalmente filtra por grupo.
     """
-    composicoes = crud.search_composicoes_by_descricao(db, q=q, uf=uf, data_referencia=data_referencia, regime=regime, skip=skip, limit=limit)
-    if grupo and composicoes:
-        grupo_upper = grupo.upper()
-        composicoes = [c for c in composicoes if c.grupo and c.grupo.upper() == grupo_upper]
+    composicoes = crud.search_composicoes_by_descricao(db, q=q, uf=uf, data_referencia=data_referencia, regime=regime, skip=skip, limit=limit, grupo=grupo)
     return composicoes
 
 
@@ -338,4 +405,74 @@ def get_abc_by_classificacao(
     result = crud.get_abc_by_classificacao(db, codigos=codigos, uf=uf, data_referencia=data_referencia, regime=regime)
     if not result:
         raise HTTPException(status_code=404, detail="Nenhuma classificação encontrada para as composições e filtros especificados.")
+    return result
+
+@app.get("/api/v1/public/bi/tendencias/por-classificacao", response_model=List[schemas.TendenciaClassificacao], tags=["Business Intelligence"])
+def get_tendencias_classificacao(
+    uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
+    data_referencia: str = Query(..., description="Data de referência final no formato AAAA-MM. Ex: 2025-09"),
+    regime: str = Query("NAO_DESONERADO", description="Regime de preço."),
+    meses: int = Query(12, description="Número de meses a serem analisados para trás."),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna a evolução mensal do preço médio por classificação de insumo
+    para análise de tendências e volatilidade de categorias de materiais.
+    """
+    result = crud.get_tendencias_by_classificacao(db, uf=uf, regime=regime, data_referencia=data_referencia, meses=meses)
+    if not result:
+        raise HTTPException(status_code=404, detail="Nenhum dado de tendência encontrado para os filtros especificados.")
+    return result
+
+@app.get("/api/v1/public/bi/item/{tipo_item}/{codigo}/precos-uf", response_model=List[schemas.PrecoPorUF], tags=["Business Intelligence"])
+def get_item_prices_all_ufs(
+    tipo_item: str = Path(..., description="Tipo do item: 'insumo' ou 'composicao'"),
+    codigo: int = Path(..., description="Código do item."),
+    data_referencia: str = Query(..., description="Data de referência no formato AAAA-MM. Ex: 2025-09"),
+    regime: str = Query("NAO_DESONERADO", description="Regime de custo/preço."),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna o preço de um item em TODAS as UFs disponíveis para
+    comparação regional completa e mapa de calor.
+    """
+    if tipo_item not in ['insumo', 'composicao']:
+        raise HTTPException(status_code=400, detail="Tipo de item inválido. Use 'insumo' ou 'composicao'.")
+    precos = crud.get_precos_all_ufs(db, tipo_item=tipo_item, codigo=codigo, data_referencia=data_referencia, regime=regime)
+    if not precos:
+        raise HTTPException(status_code=404, detail="Nenhum dado encontrado para o item e filtros especificados.")
+    return precos
+
+@app.get("/api/v1/public/bi/composicao/{codigo}/produtividade", response_model=schemas.ComposicaoProdutividade, tags=["Business Intelligence"])
+def get_composition_productivity(
+    codigo: int,
+    uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
+    data_referencia: str = Query(..., description="Data de referência no formato AAAA-MM. Ex: 2025-09"),
+    regime: str = Query("NAO_DESONERADO", description="Regime de custo/preço."),
+    db: Session = Depends(get_db)
+):
+    """
+    Classifica os itens do BOM de uma composição em Mão de Obra, Material e Equipamento,
+    retornando o total de Horas-Homem e o custo por HH como métrica de produtividade.
+    """
+    result = crud.get_composicao_produtividade(db, codigo=codigo, uf=uf, data_referencia=data_referencia, regime=regime)
+    if not result:
+        raise HTTPException(status_code=404, detail="Não foi possível calcular a produtividade para esta composição.")
+    return result
+
+@app.get("/api/v1/public/bi/insumo/{codigo}/onde-usado", response_model=List[schemas.InsumoOndeUsado], tags=["Business Intelligence"])
+def get_insumo_where_used(
+    codigo: int,
+    tipo_item: str = Query("insumo", description="Tipo do item: 'insumo' ou 'composicao'"),
+    db: Session = Depends(get_db)
+):
+    """
+    Query reversa: encontra todas as composições (em qualquer nível) que utilizam
+    um determinado insumo ou subcomposição. Útil para análise de impacto.
+    """
+    if tipo_item not in ['insumo', 'composicao']:
+        raise HTTPException(status_code=400, detail="Tipo de item inválido. Use 'insumo' ou 'composicao'.")
+    result = crud.get_onde_usado(db, codigo=codigo, tipo_item=tipo_item)
+    if not result:
+        raise HTTPException(status_code=404, detail="Nenhuma composição encontrada que utilize este item.")
     return result

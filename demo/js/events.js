@@ -1,7 +1,7 @@
 /** @file Inicialização de event listeners — wiring entre DOM e módulos */
 import { $, $$ } from './dom.js';
 
-export function createEvents(dom, { search, abc, compare, theme, toast, state, utils, modal, admin }) {
+export function createEvents(dom, { search, abc, compare, theme, toast, state, utils, modal, admin, trends, comparison }) {
   function closeMobileMenu() {
     document.body.classList.remove('menu-open');
     dom.mobileMenu?.classList.add('hidden');
@@ -105,7 +105,7 @@ export function createEvents(dom, { search, abc, compare, theme, toast, state, u
         btn.addEventListener('click', () => {
           const fmt = btn.dataset.format;
           if (btn.id === 'btnExportBOM') {
-            toast.show(`Export BOM ${fmt} em desenvolvimento`, 'info');
+            modal.exportPdf();
           } else if (search.export) {
             search.export(fmt);
           }
@@ -176,6 +176,18 @@ export function createEvents(dom, { search, abc, compare, theme, toast, state, u
           modal.show(tipo, codigo);
         }
       });
+    },
+
+    // Sprint 1c — Trends
+    trends() {
+      dom.trendsForm?.addEventListener('submit', e => { e.preventDefault(); trends.perform(); });
+      dom.trendsBtn?.addEventListener('click', () => trends.perform());
+    },
+
+    // Sprint 1c — Comparison Cross
+    comparison() {
+      dom.comparisonForm?.addEventListener('submit', e => { e.preventDefault(); comparison.perform(); });
+      dom.comparisonBtn?.addEventListener('click', () => comparison.perform());
     },
   };
 

@@ -52,6 +52,7 @@ def get_available_filters(db: Session) -> dict:
 
 # --- Seção 1: Funções de Busca Direta (CRUD) ---
 
+@cache_result(ttl=3600)
 def get_insumo_by_codigo(
     db: Session, codigo: int, uf: str, data_referencia: str, regime: str
 ) -> Optional[dict]:
@@ -70,8 +71,10 @@ def get_insumo_by_codigo(
     }).first()
     return result
 
+@cache_result(ttl=3600)
 def search_insumos_by_descricao(
-    db: Session, q: str, uf: str, data_referencia: str, regime: str, skip: int, limit: int
+    db: Session, q: str, uf: str, data_referencia: str, regime: str, skip: int, limit: int,
+    classificacao: str = None
 ) -> List[dict]:
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
@@ -81,15 +84,18 @@ def search_insumos_by_descricao(
         WHERE i.descricao ILIKE :query AND i.status = :status AND p.uf = :uf
           AND p.data_referencia >= :start_date AND p.data_referencia <= :end_date
           AND p.regime = :regime
+          {'AND UPPER(i.classificacao) = UPPER(:classificacao)' if classificacao else ''}
         ORDER BY i.descricao OFFSET :skip LIMIT :limit
     """)
     result = db.execute(query, {
         "query": f"%{q}%", "uf": uf.upper(), "start_date": start_date, "end_date": end_date,
         "regime": regime.upper(), "status": settings.DEFAULT_ITEM_STATUS,
-        "skip": skip, "limit": limit
+        "skip": skip, "limit": limit,
+        **({"classificacao": classificacao} if classificacao else {})
     }).fetchall()
     return result
 
+@cache_result(ttl=3600)
 def get_composicao_by_codigo(
     db: Session, codigo: int, uf: str, data_referencia: str, regime: str
 ) -> Optional[dict]:
@@ -108,8 +114,10 @@ def get_composicao_by_codigo(
     }).first()
     return result
 
+@cache_result(ttl=3600)
 def search_composicoes_by_descricao(
-    db: Session, q: str, uf: str, data_referencia: str, regime: str, skip: int, limit: int
+    db: Session, q: str, uf: str, data_referencia: str, regime: str, skip: int, limit: int,
+    grupo: str = None
 ) -> List[dict]:
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
@@ -119,12 +127,14 @@ def search_composicoes_by_descricao(
         WHERE c.descricao ILIKE :query AND c.status = :status AND p.uf = :uf
           AND p.data_referencia >= :start_date AND p.data_referencia <= :end_date
           AND p.regime = :regime
+          {'AND UPPER(c.grupo) = UPPER(:grupo)' if grupo else ''}
         ORDER BY c.descricao OFFSET :skip LIMIT :limit
     """)
     result = db.execute(query, {
         "query": f"%{q}%", "uf": uf.upper(), "start_date": start_date, "end_date": end_date,
         "regime": regime.upper(), "status": settings.DEFAULT_ITEM_STATUS,
-        "skip": skip, "limit": limit
+        "skip": skip, "limit": limit,
+        **({"grupo": grupo} if grupo else {})
     }).fetchall()
     return result
 
@@ -167,23 +177,22 @@ def get_abc_curve_for_composicoes(
 ) -> List[dict]:
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
-    WITH RECURSIVE composicao_completa (item_codigo, tipo_item, coeficiente_total) AS (
-        SELECT codigo, 'COMPOSICAO', 1.0 FROM {settings.TABLE_COMPOSICOES} WHERE codigo IN :codigos
+WITH RECURSIVE composicao_completa (item_codigo, tipo_item, coeficiente_total, nivel) AS (
+        SELECT codigo, 'COMPOSICAO', 1.0, 1 FROM {settings.TABLE_COMPOSICOES} WHERE codigo IN :codigos
         UNION ALL
-        SELECT vis.item_codigo, vis.tipo_item, rec.coeficiente_total * vis.coeficiente
-        FROM {settings.VIEW_COMPOSICAO_ITENS} as vis
-        JOIN composicao_completa as rec ON vis.composicao_pai_codigo = rec.item_codigo
-        WHERE rec.tipo_item = 'COMPOSICAO'
+        SELECT vis.item_codigo, vis.tipo_item, rec.coeficiente_total * vis.coeficiente, rec.nivel + 1
+        FROM {settings.VIEW_COMPOSICAO_ITENS} AS vis
+        JOIN composicao_completa AS rec ON vis.composicao_pai_codigo = rec.item_codigo
+        WHERE rec.tipo_item = 'COMPOSICAO' AND rec.nivel < 10
     )
     SELECT i.codigo, i.descricao, i.unidade, SUM(cc.coeficiente_total * p.preco_mediano) AS custo_impacto_total
     FROM composicao_completa cc
     JOIN {settings.TABLE_INSUMOS} i ON cc.item_codigo = i.codigo
     JOIN {settings.TABLE_PRECOS_INSUMOS} p ON i.codigo = p.insumo_codigo
-    WHERE cc.tipo_item = 'INSUMO' AND p.uf = :uf
-      AND p.data_referencia >= :start_date AND p.data_referencia <= :end_date AND p.regime = :regime
+    WHERE cc.tipo_item = 'INSUMO' AND p.uf = :uf AND p.data_referencia >= :start_date AND p.data_referencia <= :end_date AND p.regime = :regime
     GROUP BY i.codigo, i.descricao, i.unidade
     HAVING SUM(cc.coeficiente_total * p.preco_mediano) > 0
-    ORDER BY custo_impacto_total DESC;
+    ORDER BY custo_impacto_total DESC
     """)
     result = db.execute(query, {"codigos": tuple(codigos), "uf": uf.upper(), "start_date": start_date, "end_date": end_date, "regime": regime.upper()}).fetchall()
     insumos = [dict(r._mapping) for r in result]
@@ -218,14 +227,14 @@ def get_composicao_man_hours(db: Session, codigo: int):
     de todos os insumos de mão de obra (unidade 'H') em todos os níveis.
     """
     query = text(f"""
-    WITH RECURSIVE composicao_completa (item_codigo, tipo_item, coeficiente_total) AS (
-        SELECT item_codigo, tipo_item, coeficiente FROM {settings.VIEW_COMPOSICAO_ITENS}
+    WITH RECURSIVE composicao_completa (item_codigo, tipo_item, coeficiente_total, nivel) AS (
+        SELECT item_codigo, tipo_item, coeficiente, 1 FROM {settings.VIEW_COMPOSICAO_ITENS}
         WHERE composicao_pai_codigo = :codigo
         UNION ALL
-        SELECT vis.item_codigo, vis.tipo_item, rec.coeficiente_total * vis.coeficiente
+        SELECT vis.item_codigo, vis.tipo_item, rec.coeficiente_total * vis.coeficiente, rec.nivel + 1
         FROM {settings.VIEW_COMPOSICAO_ITENS} AS vis
         JOIN composicao_completa AS rec ON vis.composicao_pai_codigo = rec.item_codigo
-        WHERE rec.tipo_item = 'COMPOSICAO'
+        WHERE rec.tipo_item = 'COMPOSICAO' AND rec.nivel < 10
     )
     SELECT SUM(cc.coeficiente_total) as total_hora_homem
     FROM composicao_completa cc
@@ -276,13 +285,13 @@ def get_abc_by_classificacao(
     """
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
-    WITH RECURSIVE composicao_completa (item_codigo, tipo_item, coeficiente_total) AS (
-        SELECT codigo, 'COMPOSICAO', 1.0 FROM {settings.TABLE_COMPOSICOES} WHERE codigo IN :codigos
+    WITH RECURSIVE composicao_completa (item_codigo, tipo_item, coeficiente_total, nivel) AS (
+        SELECT codigo, 'COMPOSICAO', 1.0, 1 FROM {settings.TABLE_COMPOSICOES} WHERE codigo IN :codigos
         UNION ALL
-        SELECT vis.item_codigo, vis.tipo_item, rec.coeficiente_total * vis.coeficiente
+        SELECT vis.item_codigo, vis.tipo_item, rec.coeficiente_total * vis.coeficiente, rec.nivel + 1
         FROM {settings.VIEW_COMPOSICAO_ITENS} as vis
         JOIN composicao_completa as rec ON vis.composicao_pai_codigo = rec.item_codigo
-        WHERE rec.tipo_item = 'COMPOSICAO'
+        WHERE rec.tipo_item = 'COMPOSICAO' AND rec.nivel < 10
     )
     SELECT i.classificacao,
            SUM(cc.coeficiente_total * p.preco_mediano) as custo_total,
@@ -303,3 +312,129 @@ def get_abc_by_classificacao(
     for item in categorias:
         item['percentual'] = (float(item['custo_total'] or 0) / total_geral * 100) if total_geral > 0 else 0
     return categorias
+
+@cache_result(ttl=86400)
+def get_tendencias_by_classificacao(
+    db: Session, uf: str, regime: str, data_referencia: str, meses: int = 12
+) -> List[dict]:
+    """
+    Retorna a evolução mensal do preço médio por classificação de insumo
+    para análise de tendências e volatilidade.
+    """
+    s_date, e_date = _get_date_range(data_referencia)
+    from datetime import timedelta
+    from dateutil.relativedelta import relativedelta
+    end_date = e_date
+    start_date = s_date - relativedelta(months=meses)
+    query = text(f"""
+        SELECT i.classificacao,
+               TO_CHAR(p.data_referencia, 'YYYY-MM') as mes,
+               AVG(p.preco_mediano) as preco_medio,
+               COUNT(DISTINCT i.codigo) as qtd_insumos
+        FROM {settings.TABLE_PRECOS_INSUMOS} p
+        JOIN {settings.TABLE_INSUMOS} i ON i.codigo = p.insumo_codigo
+        WHERE p.uf = :uf AND p.regime = :regime
+          AND p.data_referencia >= :start_date AND p.data_referencia <= :end_date
+          AND i.classificacao IS NOT NULL AND i.classificacao != ''
+        GROUP BY i.classificacao, TO_CHAR(p.data_referencia, 'YYYY-MM')
+        ORDER BY i.classificacao, mes
+    """)
+    result = db.execute(query, {
+        "uf": uf.upper(), "regime": regime.upper(),
+        "start_date": start_date, "end_date": end_date
+    }).fetchall()
+    return [dict(r._mapping) for r in result]
+
+def get_precos_all_ufs(
+    db: Session, tipo_item: str, codigo: int, data_referencia: str, regime: str
+) -> List[dict]:
+    """
+    Retorna o preço de um item em TODAS as UFs disponíveis.
+    """
+    start_date, end_date = _get_date_range(data_referencia)
+    table = settings.TABLE_PRECOS_INSUMOS if tipo_item == 'insumo' else settings.TABLE_CUSTOS_COMPOSICOES
+    col = 'insumo_codigo' if tipo_item == 'insumo' else 'composicao_codigo'
+    val = 'preco_mediano' if tipo_item == 'insumo' else 'custo_total'
+    query = text(f"""
+        SELECT uf, {val} as valor
+        FROM {table}
+        WHERE {col} = :codigo
+          AND data_referencia >= :start_date AND data_referencia <= :end_date
+          AND regime = :regime
+        ORDER BY uf
+    """)
+    result = db.execute(query, {
+        "codigo": codigo, "start_date": start_date, "end_date": end_date,
+        "regime": regime.upper()
+    }).fetchall()
+    return [dict(r._mapping) for r in result]
+
+@cache_result(ttl=86400)
+def get_composicao_produtividade(
+    db: Session, codigo: int, uf: str, data_referencia: str, regime: str
+) -> dict:
+    """
+    Classifica os itens do BOM de uma composição em Mão de Obra, Material e Equipamento,
+    retornando o total de Horas-Homem, custo total e custo por HH.
+    """
+    bom_data = get_composicao_bom(db, codigo, uf, data_referencia, regime)
+    if not bom_data:
+        return None
+
+    total_hh = 0.0
+    mao_de_obra = 0.0
+    equipamento = 0.0
+    material = 0.0
+
+    for item in bom_data:
+        impacto = float(item.get('custo_impacto_total') or 0)
+        unidade = (item.get('unidade') or '').upper()
+
+        if unidade == 'H':
+            mao_de_obra += impacto
+            total_hh += float(item.get('coeficiente_total') or 0)
+        elif unidade in ('CHP', 'CHI', 'EQ'):
+            equipamento += impacto
+        else:
+            material += impacto
+
+    total = mao_de_obra + material + equipamento
+    custo_por_hh = total / total_hh if total_hh > 0 else None
+
+    return {
+        "total_custo": round(total, 2),
+        "mao_de_obra": round(mao_de_obra, 2),
+        "material": round(material, 2),
+        "equipamento": round(equipamento, 2),
+        "total_hh": round(total_hh, 4),
+        "custo_por_hh": round(custo_por_hh, 2) if custo_por_hh is not None else None,
+    }
+
+@cache_result(ttl=86400)
+def get_onde_usado(
+    db: Session, codigo: int, tipo_item: str = 'insumo'
+) -> List[dict]:
+    """
+    Query reversa recursiva: encontra todas as composições que usam um insumo
+    (ou subcomposição) em qualquer nível hierárquico.
+    """
+    item_type = 'INSUMO' if tipo_item == 'insumo' else 'COMPOSICAO'
+    query = text(f"""
+    WITH RECURSIVE parents AS (
+        SELECT composicao_pai_codigo, coeficiente, 1 as nivel
+        FROM {settings.VIEW_COMPOSICAO_ITENS}
+        WHERE item_codigo = :codigo AND tipo_item = :item_type
+        UNION ALL
+        SELECT ci.composicao_pai_codigo, p.coeficiente * ci.coeficiente, p.nivel + 1
+        FROM {settings.VIEW_COMPOSICAO_ITENS} ci
+        JOIN parents p ON ci.item_codigo = p.composicao_pai_codigo
+        WHERE ci.tipo_item = 'COMPOSICAO' AND p.nivel < 10
+    )
+    SELECT DISTINCT c.codigo as composicao_codigo, c.descricao as composicao_descricao,
+           'COMPOSICAO' as tipo_item, p.coeficiente, p.nivel
+    FROM parents p
+    JOIN {settings.TABLE_COMPOSICOES} c ON c.codigo = p.composicao_pai_codigo
+    ORDER BY p.nivel, c.descricao
+    """)
+    result = db.execute(query, {"codigo": codigo, "item_type": item_type}).fetchall()
+    return [dict(r._mapping) for r in result]

@@ -110,6 +110,7 @@ export function createCompare(config, state, dom, utils, api, toast) {
   }
 
   function render() {
+    cleanupChart();
     const data = state.compare.data;
     if (!data?.length) return;
 
@@ -146,6 +147,8 @@ export function createCompare(config, state, dom, utils, api, toast) {
       const maxVal = Math.max(...chartValues.filter(v => v > 0));
 
       const ctx = dom.compareChart.getContext('2d');
+      const existing = Chart.getChart(ctx.canvas);
+      if (existing) existing.destroy();
       const configChart = {
         type: 'bar',
         data: {

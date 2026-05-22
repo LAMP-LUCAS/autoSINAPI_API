@@ -34,13 +34,16 @@ const AutoSINAPITests = (() => {
 
   // ==================== UNIT TESTS ====================
   function runUnitTests() {
-    console.log('\n🧪 [UNIT TESTS] Iniciando testes unitários...\n');
+    console.log('\n🧪 [UNIT TESTS] Testando módulos e estado...\n');
+
+    const app = window.AutoSINAPI;
+    if (!app) { assert(false, 'window.AutoSINAPI não definido'); return; }
+    const { utils, state } = app;
 
     // Test 1: AutoSINAPI deve estar definido
-    assertTruthy(window.AutoSINAPI, 'window.AutoSINAPI está definido');
+    assertTruthy(app, 'window.AutoSINAPI está definido');
 
     // Test 2: Utils.escapeHtml
-    const { utils } = window.AutoSINAPI;
     if (utils) {
       assertEqual(utils.escapeHtml('<script>alert("xss")</script>'), '&lt;script&gt;alert("xss")&lt;/script&gt;', 'escapeHtml previne XSS');
       assertEqual(utils.escapeHtml(null), '', 'escapeHtml lida com null');
@@ -56,13 +59,74 @@ const AutoSINAPITests = (() => {
       assertTruthy(utils.getDefault('ufs', 'SP'), 'getDefault retorna primeiro UF quando array populado');
     }
 
-    // Test 5: State inicial
-    const { state } = window.AutoSINAPI;
+    // Test 5: State inicial — estrutura e defaults corretos
     if (state) {
       assertTruthy(state.theme, 'state.theme está definido');
       assert(['light', 'dark'].includes(state.theme), `state.theme é 'light' ou 'dark' (got: ${state.theme})`);
       assertTruthy(state.filters, 'state.filters está definido');
+      assertArray(state.filters.ufs, 'state.filters.ufs é um array');
+      assertArray(state.filters.dates, 'state.filters.dates é um array');
+      assertArray(state.filters.regimes, 'state.filters.regimes é um array');
       assertArray(state.search.results, 'state.search.results é um array');
+      // Sprint 1c: estado dos novos módulos
+      assertEqual(state.trends.loading, false, 'state.trends.loading inicia false');
+      assertEqual(state.heatmap.data, null, 'state.heatmap.data inicia null');
+      assertEqual(state.comparison.loading, false, 'state.comparison.loading inicia false');
+      assertEqual(state.comparison.left, null, 'state.comparison.left inicia null');
+      assertEqual(state.comparison.right, null, 'state.comparison.right inicia null');
+    }
+
+    // Test 6: Módulos Sprint 1c — métodos públicos existem
+    const modules = [
+      { module: app.trends, name: 'trends', methods: ['perform'] },
+      { module: app.heatmap, name: 'heatmap', methods: ['render'] },
+      { module: app.comparison, name: 'comparison', methods: ['perform'] },
+    ];
+    for (const { module: mod, name, methods } of modules) {
+      if (mod) {
+        assertTruthy(mod, `Módulo ${name} está disponível`);
+        for (const method of methods) {
+          assert(typeof mod[method] === 'function', `${name}.${method} é uma função`);
+        }
+      }
+    }
+
+    // Test 7: Módulos existentes — métodos públicos existem
+    const existingModules = [
+      { module: app.search, name: 'search', methods: ['perform', 'render', 'setView', 'export', 'setSearchType'] },
+      { module: app.abc, name: 'abc', methods: ['perform', 'render', 'setView', 'toggleGroupBy'] },
+      { module: app.compare, name: 'compare', methods: ['perform', 'render', 'toggleState'] },
+      { module: app.modal, name: 'modal', methods: ['show', 'close', 'exportChart', 'filterBom', 'setBomView'] },
+      { module: app.api, name: 'api', methods: ['request', 'fetchStats', 'populateFilters', 'updateFilterVisibility'] },
+    ];
+    for (const { module: mod, name, methods } of existingModules) {
+      if (mod) {
+        for (const method of methods) {
+          assert(typeof mod[method] === 'function', `${name}.${method} é uma função`);
+        }
+      }
+    }
+
+    // Test 8: Module boundary conditions — não crasham com params inválidos
+    try {
+      app.trends?.perform?.();  // sem filtros → deve mostrar warning, não crashar
+      assert(true, 'trends.perform() sem filtros não crasha');
+    } catch (e) {
+      assert(false, `trends.perform() sem filtros crashou: ${e.message}`);
+    }
+
+    try {
+      app.comparison?.perform?.();  // sem códigos → deve mostrar warning, não crashar
+      assert(true, 'comparison.perform() sem códigos não crasha');
+    } catch (e) {
+      assert(false, `comparison.perform() sem códigos crashou: ${e.message}`);
+    }
+
+    try {
+      app.heatmap?.render?.(undefined, 'insumo');  // sem código → deve retornar cedo
+      assert(true, 'heatmap.render(undefined) não crasha');
+    } catch (e) {
+      assert(false, `heatmap.render(undefined) crashou: ${e.message}`);
     }
 
     console.log(`\n✅ Unit Tests: ${results.passed} passou, ${results.failed} falhou\n`);
@@ -89,6 +153,15 @@ const AutoSINAPITests = (() => {
       // Sprint 1b: New elements
       'abcToggleGroup', 'maintenanceSection', 'maintenanceContainer',
       'adminSection', 'adminForm', 'adminYear', 'adminMonth', 'adminUf',
+      // Sprint 1c: Trends
+      'trendsStateFilter', 'trendsDateFilter', 'trendsRegimeFilter', 'trendsBtn',
+      'trendsChart', 'trendsResults', 'trendsTable',
+      // Sprint 1c: Heatmap
+      'heatmapChart', 'heatmapSection',
+      // Sprint 1c: Comparison Cross
+      'comparisonCode1', 'comparisonCode2', 'comparisonBtn',
+      'comparisonResults', 'comparisonLeftTable', 'comparisonRightTable',
+      'comparisonDeltaTable', 'comparisonChart',
     ];
 
     ids.forEach(id => {
@@ -110,7 +183,7 @@ const AutoSINAPITests = (() => {
     }
 
     // Test: Canvas elements exist
-    ['abcChart', 'compareChart', 'historyChart'].forEach(id => {
+    ['abcChart', 'compareChart', 'historyChart', 'trendsChart', 'heatmapChart', 'comparisonChart'].forEach(id => {
       const canvas = document.getElementById(id);
       if (canvas) {
         assert(canvas.getContext('2d'), `Canvas #${id} tem contexto 2d`);
@@ -179,7 +252,6 @@ const AutoSINAPITests = (() => {
     }
 
     // Test 7: API filter updates
-    const { api } = window.AutoSINAPI;
     if (api) {
       assertTruthy(api.updateFilterVisibility, 'api.updateFilterVisibility está definido');
       assertTruthy(api.populateFilters, 'api.populateFilters está definido');
@@ -213,6 +285,27 @@ const AutoSINAPITests = (() => {
     if (modal) {
       // exportChart and filterBom tested in Sprint 1a
       assertTruthy(modal.show, 'modal.show está definido');
+    }
+
+    // Test 12: Trends module (Sprint 1c)
+    const { trends } = window.AutoSINAPI;
+    if (trends) {
+      assertTruthy(trends.perform, 'trends.perform está definido');
+      assert(typeof trends.perform === 'function', 'trends.perform é uma função');
+    }
+
+    // Test 13: Heatmap module (Sprint 1c)
+    const { heatmap } = window.AutoSINAPI;
+    if (heatmap) {
+      assertTruthy(heatmap.render, 'heatmap.render está definido');
+      assert(typeof heatmap.render === 'function', 'heatmap.render é uma função');
+    }
+
+    // Test 14: Comparison Cross module (Sprint 1c)
+    const { comparison } = window.AutoSINAPI;
+    if (comparison) {
+      assertTruthy(comparison.perform, 'comparison.perform está definido');
+      assert(typeof comparison.perform === 'function', 'comparison.perform é uma função');
     }
 
     console.log(`\n✅ E2E Tests: ${results.passed} passou, ${results.failed} falhou\n`);
@@ -279,6 +372,28 @@ ADMIN (SPRINT 1b):
 ☐ Clicar "Iniciar Carga" dispara POST /admin/populate-database
 ☐ Polling de status funciona (task status polling a cada 3s)
 ☐ Resultado da tarefa aparece ao final
+
+TENDÊNCIAS (SPRINT 1c):
+☐ Seção "Tendências de Volatilidade" existe na página
+☐ Filtros UF/Referência/Regime são populados dinamicamente
+☐ Clicar "Analisar Tendências" carrega gráfico de linhas
+☐ Gráfico mostra uma série por classificação de insumo
+☐ Tabela de inflação acumulada por categoria aparece abaixo do gráfico
+☐ Variação % está colorida (verde para queda, vermelho para alta)
+
+MAPA DE CALOR REGIONAL (SPRINT 1c):
+☐ Abrir modal de insumo mostra card "Mapa de Calor Regional"
+☐ Gráfico de barras horizontal mostra preço em todas as UFs
+☐ Barras são coloridas em gradiente verde (barato) → vermelho (caro)
+☐ Tooltip mostra seta ▲/▼ indicando acima/abaixo da média
+
+COMPARAÇÃO CRUZADA (SPRINT 1c):
+☐ Seção "Comparação Cruzada de Composições" existe na página
+☐ Digitar 2 códigos de composição e clicar "Comparar"
+☐ Duas tabelas lado a lado mostram o BOM de cada composição
+☐ Tabela "Diferenças Item a Item" mostra delta entre as duas
+☐ Diferença positiva em verde, negativa em vermelho
+☐ Gráfico de barras agrupado compara custo por tipo de item
 
 RESPONSIVIDADE:
 ☐ Teste em 320px (smartwatch)

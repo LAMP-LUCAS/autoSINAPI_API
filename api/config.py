@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # Centraliza valores padrão usados nas queries.
     DEFAULT_ITEM_STATUS: str = "ATIVO"
 
+    # --- Configurações de Segurança ---
+    ALLOWED_ORIGINS: str = "*"  # Lista separada por vírgula. Ex: "https://demo.lamp.local,http://localhost:8080"
+
 # Cria uma instância única das configurações que será importada pelo resto da aplicação.
 # Isso garante que as configurações sejam lidas e validadas uma única vez.
 settings = Settings()

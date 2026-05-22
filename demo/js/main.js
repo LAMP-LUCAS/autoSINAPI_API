@@ -15,6 +15,9 @@ import { createABC } from './modules/abc.js';
 import { createCompare } from './modules/compare.js';
 import { createModal } from './modules/modal.js';
 import { createAdmin } from './modules/admin.js';
+import { createTrends } from './modules/trends.js';
+import { createHeatmap } from './modules/heatmap.js';
+import { createComparison } from './modules/comparison.js';
 import { createEvents } from './events.js';
 
 // ── Injeção de Dependências ──────────────────
@@ -27,9 +30,12 @@ const api = createApi(CONFIG, toast, utils, state, dom);
 const search = createSearch(CONFIG, state, dom, utils, api, toast);
 const abc = createABC(CONFIG, state, dom, utils, api, toast, theme);
 const compare = createCompare(CONFIG, state, dom, utils, api, toast);
-const modal = createModal(CONFIG, state, dom, utils, api, toast);
+const heatmap = createHeatmap(CONFIG, state, dom, utils, api, toast);
+const trends = createTrends(CONFIG, state, dom, utils, api, toast);
+const comparison = createComparison(CONFIG, state, dom, utils, api, toast);
+const modal = createModal(CONFIG, state, dom, utils, api, toast, heatmap);
 const admin = createAdmin(CONFIG, state, dom, utils, api, toast);
-const events = createEvents(dom, { search, abc, compare, theme, toast, state, utils, modal, admin });
+const events = createEvents(dom, { search, abc, compare, theme, toast, state, utils, modal, admin, trends, comparison });
 
 // ── Inicialização ────────────────────────────
 async function init() {
@@ -49,6 +55,6 @@ async function init() {
 
 // ── Testabilidade (dev apenas) ───────────────
 if (['localhost', '127.0.0.1'].includes(window.location.hostname) || window.location.hostname.includes('lamp.local')) {
-  window.AutoSINAPI = { state, search, abc, compare, theme, api, toast, utils, modal, admin };
+  window.AutoSINAPI = { state, search, abc, compare, theme, api, toast, utils, modal, admin, trends, heatmap, comparison };
   console.log('[AutoSINAPI] Test interface: window.AutoSINAPI');
 }
