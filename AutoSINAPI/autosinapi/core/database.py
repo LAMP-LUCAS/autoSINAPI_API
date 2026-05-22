@@ -85,7 +85,7 @@ class Database:
         """Cria as tabelas do modelo de dados do SINAPI no banco."""
         drop_statements = f"""
         DROP VIEW IF EXISTS vw_composicao_itens_unificados;
-        DROP TABLE IF EXISTS sinapi_audit_log CASCADE;
+        DROP TABLE IF EXISTS {self.config.DB_TABLE_AUDIT_LOG} CASCADE;
         DROP TABLE IF EXISTS {self.config.DB_TABLE_COMPOSICAO_SUBCOMPOSICOES} CASCADE;
         DROP TABLE IF EXISTS {self.config.DB_TABLE_COMPOSICAO_INSUMOS} CASCADE;
         DROP TABLE IF EXISTS {self.config.DB_TABLE_CUSTOS_COMPOSICOES} CASCADE;
@@ -156,14 +156,14 @@ class Database:
             created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id UUID,
             PRIMARY KEY (item_codigo, tipo_item, data_referencia, tipo_manutencao)
         );
-        CREATE TABLE sinapi_audit_log (
+        CREATE TABLE {self.config.DB_TABLE_AUDIT_LOG} (
             id BIGSERIAL PRIMARY KEY, table_name VARCHAR(100) NOT NULL, record_pk JSONB NOT NULL, operation VARCHAR(10) NOT NULL,
             old_values JSONB, new_values JSONB, sinapi_versao VARCHAR(20), etl_run_id UUID, motivo_manutencao VARCHAR(200),
             created_at TIMESTAMPTZ DEFAULT NOW()
         );
-        CREATE INDEX idx_audit_table_name ON sinapi_audit_log(table_name);
-        CREATE INDEX idx_audit_created_at ON sinapi_audit_log(created_at);
-        CREATE INDEX idx_audit_etl_run ON sinapi_audit_log(etl_run_id);
+        CREATE INDEX idx_audit_table_name ON {self.config.DB_TABLE_AUDIT_LOG}(table_name);
+        CREATE INDEX idx_audit_created_at ON {self.config.DB_TABLE_AUDIT_LOG}(created_at);
+        CREATE INDEX idx_audit_etl_run ON {self.config.DB_TABLE_AUDIT_LOG}(etl_run_id);
         CREATE INDEX idx_insumos_updated_at ON {self.config.DB_TABLE_INSUMOS}(updated_at);
         CREATE INDEX idx_composicoes_updated_at ON {self.config.DB_TABLE_COMPOSICOES}(updated_at);
         CREATE INDEX idx_precos_updated_at ON {self.config.DB_TABLE_PRECOS_INSUMOS}(updated_at);
@@ -351,8 +351,9 @@ class Database:
                          sinapi_versao: str = None, etl_run_id: str = None,
                          motivo_manutencao: str = None):
         """Registra evento no sinapi_audit_log."""
-        query = text("""
-            INSERT INTO sinapi_audit_log 
+        audit_table = self.config.DB_TABLE_AUDIT_LOG
+        query = text(f"""
+            INSERT INTO {audit_table}
             (table_name, record_pk, operation, old_values, new_values, 
              sinapi_versao, etl_run_id, motivo_manutencao)
             VALUES (:table_name, :record_pk, :operation, :old_values, :new_values,

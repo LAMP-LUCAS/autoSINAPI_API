@@ -481,9 +481,10 @@ class PipelineETL:
             self.logger.info("[FASE 0] Verificando existência de tabelas...")
             with db._engine.connect() as conn:
                 from sqlalchemy import text
-                check = conn.execute(text("SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'insumos')")).scalar()
+                check_table = self.config.DB_TABLE_INSUMOS
+                check = conn.execute(text(f"SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = '{check_table}')")).scalar()
                 if not check:
-                    self.logger.info("[FASE 0] Tabelas não encontradas. Criando esquema...")
+                    self.logger.info(f"[FASE 0] Tabela '{check_table}' não encontrada. Criando esquema...")
                     db.create_tables()
                 else:
                     self.logger.info("[FASE 0] Esquema já existente. Pulando criação.")

@@ -95,6 +95,7 @@ class Config:
         "DB_TABLE_INSUMOS_FAMILIAS": "insumos_familias",
         "DB_TABLE_COEFICIENTES_FAMILIA": "coeficientes_familia_mensal",
         "DB_TABLE_COMPOSICOES_MIX_MO": "composicoes_mix_mao_de_obra",
+        "DB_TABLE_AUDIT_LOG": "sinapi_audit_log",
         "ITEM_TYPE_INSUMO": "INSUMO",
         "ITEM_TYPE_COMPOSICAO": "COMPOSICAO",
         "DB_DIALECT": "postgresql",
