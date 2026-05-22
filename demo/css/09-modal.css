@@ -53,8 +53,9 @@
     gap: 1.25rem;
 }
 
-/* History chart spans full width */
-.modal-card.history-card {
+/* History chart and Heatmap span full width */
+.modal-card.history-card,
+.modal-card.heatmap-card {
     grid-column: 1 / -1;
     width: 100%;
 }

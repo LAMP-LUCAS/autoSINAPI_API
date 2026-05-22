@@ -188,6 +188,11 @@ export function createEvents(dom, { search, abc, compare, theme, toast, state, u
     comparison() {
       dom.comparisonForm?.addEventListener('submit', e => { e.preventDefault(); comparison.perform(); });
       dom.comparisonBtn?.addEventListener('click', () => comparison.perform());
+      
+      dom.comparisonViewToggle?.addEventListener('click', e => {
+        const btn = e.target.closest('.btn-toggle');
+        if (btn) comparison.setView(btn.dataset.view);
+      });
     },
   };
 

@@ -501,6 +501,10 @@
             <div class="section-header">
                 <h2 id="comparacao-title" class="section-title">Comparação Cruzada de Composições</h2>
                 <p class="section-subtitle">Compare lado a lado a estrutura de custos de duas composições diferentes. Identifique diferenças de insumos, quantitativos e impacto financeiro.</p>
+                <div class="view-toggle" id="comparisonViewToggle" style="margin-top: 1rem; display: none;">
+                    <button type="button" class="btn-toggle active" data-view="tables">Tabelas</button>
+                    <button type="button" class="btn-toggle" data-view="chart">Gráfico</button>
+                </div>
             </div>
 
             <form id="comparisonForm">
@@ -538,45 +542,53 @@
             </div>
 
             <div id="comparisonResults" class="comparison-results hidden" aria-live="polite">
-                <div class="comparison-grid">
-                    <div class="comparison-side">
-                        <h4 id="comparisonName1" class="comparison-name">Composição 1</h4>
-                        <div class="data-table-wrapper">
-                            <table class="data-table" role="table" aria-label="BOM da composição 1">
-                                <thead>
-                                    <tr><th scope="col">Insumo</th><th scope="col">Tipo</th><th scope="col">Un.</th><th scope="col">Custo</th></tr>
-                                </thead>
-                                <tbody id="comparisonLeftTable"></tbody>
-                            </table>
+                
+                <div id="comparisonTablesView">
+                    <div class="comparison-grid">
+                        <div class="comparison-side">
+                            <h4 id="comparisonName1" class="comparison-name">Composição 1</h4>
+                            <div class="data-table-wrapper">
+                                <table class="data-table" role="table" aria-label="BOM da composição 1">
+                                    <thead>
+                                        <tr><th scope="col">Insumo</th><th scope="col">Tipo</th><th scope="col">Un.</th><th scope="col">Custo</th></tr>
+                                    </thead>
+                                    <tbody id="comparisonLeftTable"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="comparison-side">
+                            <h4 id="comparisonName2" class="comparison-name">Composição 2</h4>
+                            <div class="data-table-wrapper">
+                                <table class="data-table" role="table" aria-label="BOM da composição 2">
+                                    <thead>
+                                        <tr><th scope="col">Insumo</th><th scope="col">Tipo</th><th scope="col">Un.</th><th scope="col">Custo</th></tr>
+                                    </thead>
+                                    <tbody id="comparisonRightTable"></tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
-                    <div class="comparison-side">
-                        <h4 id="comparisonName2" class="comparison-name">Composição 2</h4>
+
+                    <div class="comparison-delta">
+                        <h4>Diferenças Item a Item</h4>
                         <div class="data-table-wrapper">
-                            <table class="data-table" role="table" aria-label="BOM da composição 2">
+                            <table class="data-table" id="comparisonDelta" role="table" aria-label="Tabela de diferenças">
                                 <thead>
-                                    <tr><th scope="col">Insumo</th><th scope="col">Tipo</th><th scope="col">Un.</th><th scope="col">Custo</th></tr>
+                                    <tr><th scope="col">Insumo</th><th scope="col">Tipo</th><th scope="col">Un.</th><th scope="col">Comp. 1</th><th scope="col">Comp. 2</th><th scope="col">Diferença</th><th scope="col">%</th></tr>
                                 </thead>
-                                <tbody id="comparisonRightTable"></tbody>
+                                <tbody id="comparisonDeltaTable"></tbody>
                             </table>
                         </div>
                     </div>
                 </div>
 
-                <div class="comparison-delta">
-                    <h4>Diferenças Item a Item</h4>
-                    <div class="data-table-wrapper">
-                        <table class="data-table" id="comparisonDelta" role="table" aria-label="Tabela de diferenças">
-                            <thead>
-                                <tr><th scope="col">Insumo</th><th scope="col">Tipo</th><th scope="col">Un.</th><th scope="col">Comp. 1</th><th scope="col">Comp. 2</th><th scope="col">Diferença</th><th scope="col">%</th></tr>
-                            </thead>
-                            <tbody id="comparisonDeltaTable"></tbody>
-                        </table>
+                <div id="comparisonChartView" class="hidden">
+                    <div class="card" style="margin-top: 1rem;">
+                        <h4 style="margin-bottom: 1rem; color: var(--text-main); font-size: 1.1rem; font-weight: 800; text-align: center;">Comparativo de Custos por Categoria</h4>
+                        <div class="chart-container" style="height: 400px; width: 100%;">
+                            <canvas id="comparisonChart" role="img" aria-label="Gráfico comparativo de composições"></canvas>
+                        </div>
                     </div>
-                </div>
-
-                <div class="chart-container" style="max-width: 500px; margin: 1rem auto;">
-                    <canvas id="comparisonChart" role="img" aria-label="Gráfico comparativo de composições"></canvas>
                 </div>
             </div>
         </section>

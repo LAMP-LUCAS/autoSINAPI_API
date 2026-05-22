@@ -2,11 +2,27 @@ import json
 import redis
 import functools
 import logging
+import decimal
+import datetime
 from typing import Optional
 from .config import settings
 from .sandbox_utils import is_sandbox_mode
 
 logger = logging.getLogger(__name__)
+
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, decimal.Decimal):
+            return float(obj)
+        if isinstance(obj, (datetime.datetime, datetime.date)):
+            return obj.isoformat()
+        if hasattr(obj, '_asdict'):
+            return obj._asdict()
+        if hasattr(obj, '_mapping'):
+            return dict(obj._mapping)
+        if hasattr(obj, '__dict__'):
+            return obj.__dict__
+        return super().default(obj)
 
 # Cliente Redis centralizado
 redis_client = redis.Redis(
@@ -65,18 +81,15 @@ def cache_result(ttl: int = settings.CACHE_DEFAULT_TTL):
             result = func(*args, **kwargs)
 
             # Converte resultado (Row ou List[Row]) para dict serializável
-            serializable_result = []
+            serializable_result = None
             if result is not None:
                 if isinstance(result, list):
-                    # fetchall() retorna lista de objetos que se comportam como dict ou Row
-                    # No SQLAlchemy 2.0+, Rows podem ser convertidos via _asdict()
                     serializable_result = [dict(row._mapping) if hasattr(row, '_mapping') else row for row in result]
                 else:
-                    # first() retorna um único Row
                     serializable_result = dict(result._mapping) if hasattr(result, '_mapping') else result
 
             try:
-                redis_client.set(key, json.dumps(serializable_result), ex=ttl)
+                redis_client.set(key, json.dumps(serializable_result, cls=CustomJSONEncoder), ex=ttl)
                 logger.debug(f"Cache MISS for {key}. Stored result.")
             except Exception as e:
                 logger.warning(f"Erro ao salvar no cache Redis: {e}")

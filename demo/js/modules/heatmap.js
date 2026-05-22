@@ -84,15 +84,16 @@ export function createHeatmap(config, state, dom, utils, api, toast) {
       throw new Error('GeoJSON vazio');
     }
 
-    const priceMap = new Map(data.map(d => [d.uf, d.valor]));
-    const values = data.map(d => d.valor);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    const priceMap = new Map(data.map(d => [d.uf, parseFloat(d.valor)]));
+    const values = data.map(d => parseFloat(d.valor)).filter(v => !isNaN(v));
+    const min = values.length > 0 ? Math.min(...values) : 0;
+    const max = values.length > 0 ? Math.max(...values) : 1;
     const range = max - min || 1;
     const avg = values.reduce((s, v) => s + v, 0) / values.length;
 
     function getColor(price) {
-      const ratio = (price - min) / range;
+      if (price == null || isNaN(price)) return '#ccc';
+      const ratio = Math.max(0, Math.min(1, (price - min) / range));
       const r = Math.round(34 + ratio * 205);
       const g = Math.round(197 - ratio * 131);
       const b = Math.round(94 - ratio * 54);
@@ -113,8 +114,14 @@ export function createHeatmap(config, state, dom, utils, api, toast) {
 
     const geoLayer = L.geoJSON(geoJson, {
       style: feature => {
-        const uf = (feature.properties.sigla || feature.properties.UF || '').toUpperCase();
+        const p = feature.properties;
+        const uf = (p.uf || p.UF || p.sigla || p.SIGLA || p.id || p.ID || p.ESTADO_SIGLA || p.state_abbr || '').toString().toUpperCase();
         const price = priceMap.get(uf);
+
+        if (!price && uf) {
+          console.debug(`[Heatmap] UF ${uf} não encontrada no priceMap. Props:`, p);
+        }
+
         return {
           fillColor: price != null ? getColor(price) : '#ccc',
           weight: 1.5,
@@ -124,8 +131,9 @@ export function createHeatmap(config, state, dom, utils, api, toast) {
         };
       },
       onEachFeature: (feature, layer) => {
-        const uf = (feature.properties.sigla || feature.properties.UF || '').toUpperCase();
-        const nome = feature.properties.nome || uf;
+        const p = feature.properties;
+        const uf = (p.uf || p.UF || p.sigla || p.id || p.ID || p.ESTADO_SIGLA || '').toString().toUpperCase();
+        const nome = p.nome || p.NM_UF || p.NOME_UF || uf;
         const price = priceMap.get(uf);
         const reg = getRegiao(uf);
         const regCor = REGIAO_CORES[reg] || '#999';
@@ -175,7 +183,15 @@ export function createHeatmap(config, state, dom, utils, api, toast) {
 
     state.heatmap.map = map;
 
-    setTimeout(() => map.invalidateSize(), 200);
+    setTimeout(() => {
+      try {
+        if (state.heatmap.map && state.heatmap.map._container) {
+          state.heatmap.map.invalidateSize();
+        }
+      } catch (e) {
+        console.debug('[Heatmap] Map ready check skipped:', e.message);
+      }
+    }, 250);
   }
 
   function renderChart(data) {

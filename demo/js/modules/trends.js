@@ -93,6 +93,7 @@ export function createTrends(config, state, dom, utils, api, toast) {
             grid: { display: false },
           },
           y: {
+            beginAtZero: true,
             ticks: { color: mutedColor, font: { size: 10 }, callback: v => 'R$ ' + Number(v).toFixed(2) },
             grid: { color: mutedColor + '20' },
           },

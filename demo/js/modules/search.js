@@ -89,6 +89,7 @@ export function createSearch(config, state, dom, utils, api, toast) {
         <div class="card" data-codigo="${item.codigo}" data-tipo="${tipo}" role="listitem">
           <div class="card-badges">
             <span class="type-tag ${tagClass}">${tagLabel}</span>
+            <span class="badge badge-codigo">#${item.codigo}</span>
             ${tipo === 'insumo' ? classificacao : grupo}
             ${status}
           </div>

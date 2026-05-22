@@ -32,8 +32,8 @@ const abc = createABC(CONFIG, state, dom, utils, api, toast, theme);
 const compare = createCompare(CONFIG, state, dom, utils, api, toast);
 const heatmap = createHeatmap(CONFIG, state, dom, utils, api, toast);
 const trends = createTrends(CONFIG, state, dom, utils, api, toast);
-const comparison = createComparison(CONFIG, state, dom, utils, api, toast);
 const modal = createModal(CONFIG, state, dom, utils, api, toast, heatmap);
+const comparison = createComparison(CONFIG, state, dom, utils, api, toast, modal);
 const admin = createAdmin(CONFIG, state, dom, utils, api, toast);
 const events = createEvents(dom, { search, abc, compare, theme, toast, state, utils, modal, admin, trends, comparison });
 

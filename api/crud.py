@@ -247,8 +247,8 @@ def get_composicao_man_hours(db: Session, codigo: int):
     """)
     result = db.execute(query, {"codigo": codigo}).first()
     if result is None or result.total_hora_homem is None:
-        return type('ManHoursResult', (), {'total_hora_homem': 0.0})()
-    return result
+        return {'total_hora_homem': 0.0}
+    return dict(result._mapping)
 
 @cache_result(ttl=86400)
 def get_candidatos_otimizacao(
@@ -331,7 +331,11 @@ def get_tendencias_by_classificacao(
     end_date = e_date
     start_date = s_date - relativedelta(months=meses)
     query = text(f"""
-        SELECT i.classificacao,
+        SELECT 
+               CASE 
+                   WHEN i.classificacao IS NULL OR TRIM(i.classificacao) = '' OR UPPER(TRIM(i.classificacao)) = 'NAO_CLASSIFICADO' THEN 'GERAL'
+                   ELSE UPPER(TRIM(i.classificacao)) 
+               END as classificacao,
                TO_CHAR(p.data_referencia, 'YYYY-MM') as mes,
                AVG(p.preco_mediano) as preco_medio,
                COUNT(DISTINCT i.codigo) as qtd_insumos
@@ -339,9 +343,8 @@ def get_tendencias_by_classificacao(
         JOIN {settings.TABLE_INSUMOS} i ON i.codigo = p.insumo_codigo
         WHERE p.uf = :uf AND p.regime = :regime
           AND p.data_referencia >= :start_date AND p.data_referencia <= :end_date
-          AND i.classificacao IS NOT NULL AND i.classificacao != ''
-        GROUP BY i.classificacao, TO_CHAR(p.data_referencia, 'YYYY-MM')
-        ORDER BY i.classificacao, mes
+        GROUP BY 1, 2
+        ORDER BY 1, mes
     """)
     result = db.execute(query, {
         "uf": uf.upper(), "regime": regime.upper(),

@@ -1,4 +1,4 @@
-export function createComparison(config, state, dom, utils, api, toast) {
+export function createComparison(config, state, dom, utils, api, toast, modal) {
   async function perform() {
     const code1 = dom.comparisonCode1?.value.trim();
     const code2 = dom.comparisonCode2?.value.trim();
@@ -16,29 +16,23 @@ export function createComparison(config, state, dom, utils, api, toast) {
       const date = dom.comparisonDateFilter?.value || utils.getDefaultDate();
       const regime = dom.comparisonRegimeFilter?.value || utils.getDefaultRegime();
 
-      const url1 = `${config.API_BASE}/bi/composicao/${encodeURIComponent(code1)}/bom?uf=${encodeURIComponent(uf)}&data_referencia=${encodeURIComponent(date)}&regime=${encodeURIComponent(regime)}`;
-      const url2 = `${config.API_BASE}/bi/composicao/${encodeURIComponent(code2)}/bom?uf=${encodeURIComponent(uf)}&data_referencia=${encodeURIComponent(date)}&regime=${encodeURIComponent(regime)}`;
-
-      const [leftResp, rightResp] = await Promise.all([
-        api.request(url1).catch(err => { console.warn('[Comparison] BOM 1 vazio:', err.message); return []; }),
-        api.request(url2).catch(err => { console.warn('[Comparison] BOM 2 vazio:', err.message); return []; }),
+      // Buscar detalhes e BOM em paralelo
+      const [leftData, rightData] = await Promise.all([
+        fetchFullCompositionData(code1, uf, date, regime),
+        fetchFullCompositionData(code2, uf, date, regime)
       ]);
 
-      const left = { codigo: code1, nome: `Composição ${code1}`, bom: Array.isArray(leftResp) ? leftResp : [] };
-      const right = { codigo: code2, nome: `Composição ${code2}`, bom: Array.isArray(rightResp) ? rightResp : [] };
-
-      const leftFlat = flattenBom(left.bom);
-      const rightFlat = flattenBom(right.bom);
-
-      if (leftFlat.length === 0 && rightFlat.length === 0) {
-        toast.show('Nenhum dado de BOM encontrado para as composições informadas.', 'info');
+      if (leftData.bom.length === 0 && rightData.bom.length === 0) {
+        toast.show('Nenhum dado encontrado para as composições informadas.', 'info');
         dom.comparisonResults?.classList.add('hidden');
+        if (dom.comparisonViewToggle) dom.comparisonViewToggle.style.display = 'none';
       } else {
-        state.comparison.left = left;
-        state.comparison.right = right;
-        renderTables(left, right, leftFlat, rightFlat);
-        renderChart(left, right);
+        state.comparison.left = leftData;
+        state.comparison.right = rightData;
+        renderTables(leftData, rightData);
+        renderChart(leftData, rightData);
         dom.comparisonResults?.classList.remove('hidden');
+        if (dom.comparisonViewToggle) dom.comparisonViewToggle.style.display = 'flex';
       }
     } catch (err) {
       console.error('[Comparison] Erro ao carregar composições:', err);
@@ -49,17 +43,43 @@ export function createComparison(config, state, dom, utils, api, toast) {
     }
   }
 
-  function flattenBom(bom) {
-    if (!bom || !Array.isArray(bom)) return [];
-    return bom.map(item => ({ ...item, nivel: item.nivel || 0 }));
+  async function fetchFullCompositionData(codigo, uf, date, regime) {
+    const detailsUrl = `${config.API_BASE}/composicoes/${encodeURIComponent(codigo)}?uf=${encodeURIComponent(uf)}&data_referencia=${encodeURIComponent(date)}&regime=${encodeURIComponent(regime)}`;
+    const bomUrl = `${config.API_BASE}/bi/composicao/${encodeURIComponent(codigo)}/bom?uf=${encodeURIComponent(uf)}&data_referencia=${encodeURIComponent(date)}&regime=${encodeURIComponent(regime)}`;
+
+    const [details, bom] = await Promise.all([
+      api.request(detailsUrl).catch(() => ({ codigo, descricao: `Composição ${codigo}`, custo_total: 0 })),
+      api.request(bomUrl).catch(() => [])
+    ]);
+
+    return {
+      ...details,
+      bom: Array.isArray(bom) ? bom : []
+    };
   }
 
-  function renderTables(left, right, leftFlat, rightFlat) {
-    const leftTotal = leftFlat.reduce((s, i) => s + (i.custo_impacto_total || 0), 0);
-    const rightTotal = rightFlat.reduce((s, i) => s + (i.custo_impacto_total || 0), 0);
+  function renderTables(left, right) {
+    const leftFlat = flattenBom(left.bom);
+    const rightFlat = flattenBom(right.bom);
+    const leftTotal = left.custo_total || leftFlat.reduce((s, i) => s + (i.custo_impacto_total || 0), 0);
+    const rightTotal = right.custo_total || rightFlat.reduce((s, i) => s + (i.custo_impacto_total || 0), 0);
 
-    dom.comparisonName1.textContent = `${left.nome} (${left.codigo}) — Total: ${utils.formatCurrency(leftTotal)}`;
-    dom.comparisonName2.textContent = `${right.nome} (${right.codigo}) — Total: ${utils.formatCurrency(rightTotal)}`;
+    // Render Headers com links para modal
+    const renderHeader = (el, data, total) => {
+      if (!el) return;
+      el.innerHTML = `
+        <div class="comparison-header-content">
+          <span class="comp-code clickable" onclick="AutoSINAPI.modal.show('composicao', '${data.codigo}')">#${data.codigo}</span>
+          <div class="comp-info">
+            <span class="comp-name clickable" onclick="AutoSINAPI.modal.show('composicao', '${data.codigo}')">${utils.escapeHtml(data.descricao)}</span>
+            <span class="comp-total">${utils.formatCurrency(total)}</span>
+          </div>
+        </div>
+      `;
+    };
+
+    renderHeader(dom.comparisonName1, left, leftTotal);
+    renderHeader(dom.comparisonName2, right, rightTotal);
 
     renderSingleTable(dom.comparisonLeftTable, leftFlat);
     renderSingleTable(dom.comparisonRightTable, rightFlat);
@@ -67,15 +87,23 @@ export function createComparison(config, state, dom, utils, api, toast) {
     renderDeltaTable(leftFlat, rightFlat);
   }
 
+  function flattenBom(bom) {
+    if (!bom || !Array.isArray(bom)) return [];
+    return bom.map(item => ({ ...item, nivel: item.nivel || 0 }));
+  }
+
   function renderSingleTable(tbody, items) {
     if (!tbody) return;
     const sorted = items.sort((a, b) => a.nivel - b.nivel);
     tbody.innerHTML = sorted.map(item => `
-      <tr>
-        <td class="cmp-nivel" style="padding-left: ${item.nivel * 1.5 + 0.5}rem">${'.'.repeat(item.nivel)}${item.descricao || ''}</td>
-        <td>${item.tipo_item || '-'}</td>
+      <tr class="clickable" onclick="AutoSINAPI.modal.show('${item.tipo_item.toLowerCase()}', '${item.item_codigo}')">
+        <td class="cmp-nivel" style="padding-left: ${item.nivel * 1 + 0.5}rem">
+          <span class="nivel-dots">${'.'.repeat(item.nivel)}</span>
+          <span class="item-desc">${utils.escapeHtml(item.descricao || '')}</span>
+        </td>
+        <td><span class="badge badge-sm ${item.tipo_item === 'INSUMO' ? 'badge-insumo' : 'badge-comp'}">${item.tipo_item[0]}</span></td>
         <td>${item.unidade || '-'}</td>
-        <td>${utils.formatCurrency(item.custo_impacto_total || 0)}</td>
+        <td class="text-right">${utils.formatCurrency(item.custo_impacto_total || 0)}</td>
       </tr>
     `).join('');
   }
@@ -97,8 +125,9 @@ export function createComparison(config, state, dom, utils, api, toast) {
       const diff = lCost - rCost;
       const pct = rCost > 0 ? (diff / rCost * 100) : (lCost > 0 ? 100 : 0);
       rows.push({
-        descricao: l?.descricao || r?.descricao || key,
+        codigo: l?.item_codigo || r?.item_codigo,
         tipo: l?.tipo_item || r?.tipo_item || '',
+        descricao: l?.descricao || r?.descricao || key,
         unidade: l?.unidade || r?.unidade || '',
         leftCost: lCost,
         rightCost: rCost,
@@ -110,16 +139,16 @@ export function createComparison(config, state, dom, utils, api, toast) {
     rows.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
 
     tbody.innerHTML = rows.map(row => {
+      const absDiff = Math.abs(row.diff);
       const cls = row.diff > 0.01 ? 'text-success' : row.diff < -0.01 ? 'text-error' : '';
       return `
-        <tr>
-          <td>${utils.escapeHtml(row.descricao)}</td>
-          <td>${row.tipo}</td>
+        <tr class="clickable" onclick="AutoSINAPI.modal.show('${row.tipo.toLowerCase()}', '${row.codigo}')">
+          <td class="item-desc-cell">${utils.escapeHtml(row.descricao)}</td>
           <td>${row.unidade}</td>
-          <td>${utils.formatCurrency(row.leftCost)}</td>
-          <td>${utils.formatCurrency(row.rightCost)}</td>
-          <td class="${cls}">${row.diff > 0 ? '+' : ''}${utils.formatCurrency(row.diff)}</td>
-          <td class="${cls}">${row.pct > 0 ? '+' : ''}${row.pct.toFixed(1)}%</td>
+          <td class="text-right">${utils.formatCurrency(row.leftCost)}</td>
+          <td class="text-right">${utils.formatCurrency(row.rightCost)}</td>
+          <td class="text-right ${cls}"><strong>${row.diff > 0 ? '+' : ''}${utils.formatCurrency(row.diff)}</strong></td>
+          <td class="text-right ${cls}">${row.pct > 0 ? '+' : ''}${row.pct.toFixed(1)}%</td>
         </tr>
       `;
     }).join('');
@@ -192,5 +221,30 @@ export function createComparison(config, state, dom, utils, api, toast) {
     });
   }
 
-  return { perform };
+  function setView(view) {
+    const tableContainer = document.getElementById('comparisonTablesView');
+    const chartContainer = document.getElementById('comparisonChartView');
+    const btns = dom.comparisonViewToggle?.querySelectorAll('.btn-toggle');
+    
+    if (!tableContainer || !chartContainer) return;
+
+    if (view === 'tables') {
+      tableContainer.classList.remove('hidden');
+      chartContainer.classList.add('hidden');
+    } else {
+      tableContainer.classList.add('hidden');
+      chartContainer.classList.remove('hidden');
+      if (state.comparison.chart) {
+        state.comparison.chart.resize();
+      }
+    }
+
+    if (btns) {
+      btns.forEach(b => {
+        b.classList.toggle('active', b.dataset.view === view);
+      });
+    }
+  }
+
+  return { perform, setView };
 }
