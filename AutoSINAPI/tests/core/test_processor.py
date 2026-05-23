@@ -89,6 +89,7 @@ def test_process_composicao_itens(processor, tmp_path):
     test_file = tmp_path / "test_sinapi.xlsx"
     df = pd.DataFrame(
         {
+            "GRUPO": ["A", "A"],
             "CODIGO_DA_COMPOSICAO": ["87453", "87453"],
             "TIPO_ITEM": ["INSUMO", "COMPOSICAO"],
             "CODIGO_DO_ITEM": ["1234", "5678"],

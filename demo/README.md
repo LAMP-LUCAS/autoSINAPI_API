@@ -133,6 +133,15 @@ AutoSINAPITests.showManualChecklist()
 - **Chart.js** (multi-theme via `getChartTheme()`)
 - **Suíte de testes** auto-contida (sem dependências externas)
 
+## ✨ Funcionalidades
+
+- **Pesquisa Inteligente:** Busca textual com filtros dinâmicos por UF, Data, Regime e Categorias.
+- **Estrutura Analítica (BOM):** Visualização de árvore de custos em cards ou tabela, com filtro em tempo real.
+- **Curva ABC:** Gráfico de Pareto e detalhamento de impacto financeiro por insumo ou categoria.
+- **Tendências Multidimensionais:** Análise de volatilidade agrupada por Classificação (Insumos), Grupo (Composições) ou Itens Específicos.
+- **Comparativo Regional:** Análise inter-regional de preços com mapa de calor (Leaflet) e destaque estatístico.
+- **Série Histórica:** Gráfico de evolução de preços dos últimos 12 meses para qualquer item.
+
 ## 🌐 Compatibilidade
 
 - Navegadores modernos (ES Modules, CSS custom properties, `@layer`)

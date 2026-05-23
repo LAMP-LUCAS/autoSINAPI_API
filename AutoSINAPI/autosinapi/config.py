@@ -42,6 +42,7 @@ class Config:
         "STATUS_SUCCESS": "SUCESSO",
         "STATUS_SUCCESS_NO_DATA": "SUCESSO (SEM DADOS)",
         "STATUS_FAILURE": "FALHA",
+        "VERSION": "1.2.0",
 
         # --- Constantes do Pre-Processor ---
         "SHEETS_TO_CONVERT": ['CSD', 'CCD', 'CSE'],
@@ -69,6 +70,7 @@ class Config:
             "TIPO_ITEM": "TIPO_ITEM", "CODIGO_COMPOSICAO": "CODIGO_DA_COMPOSICAO",
             "CODIGO_ITEM": "CODIGO_DO_ITEM", "COEFICIENTE": "COEFICIENTE",
             "DESCRICAO_ITEM": "DESCRICAO", "UNIDADE_ITEM": "UNIDADE",
+            "GRUPO_COMPOSICAO": "GRUPO",
         },
 
         "HEADER_SEARCH_LIMIT": 20,

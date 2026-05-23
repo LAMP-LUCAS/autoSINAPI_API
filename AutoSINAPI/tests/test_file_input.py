@@ -107,7 +107,7 @@ def mock_pipeline(mocker, tmp_path):
 
 def test_direct_file_input(tmp_path, mock_pipeline):
     """Testa o pipeline com input direto de arquivo."""
-        pipeline, mock_db, mock_downloader, mock_processor, mock_convert_excel_sheets_to_csv, referencia_file_path, mock_config, spy_run_pre_processing, spy_run = mock_pipeline
+    pipeline, mock_db, mock_downloader, mock_processor, mock_convert_excel_sheets_to_csv, referencia_file_path, mock_config, spy_run_pre_processing, spy_run = mock_pipeline
 
     test_file = tmp_path / "test_sinapi.xlsx"
     df = pd.DataFrame(

@@ -4,48 +4,8 @@
 database.py: Módulo de Interação com o Banco de Dados.
 
 Este módulo encapsula toda a lógica de comunicação com o banco de dados
-PostgreSQL. Ele é responsável por criar o esquema de tabelas, inserir os dados
-processados e gerenciar as transações, garantindo a integridade e a
-consistência dos dados.
-
-**Classe `Database`:**
-
-- **Inicialização:** Recebe um objeto `Config`, do qual extrai todas as
-  informações de conexão (host, port, user, password, dbname), o dialeto do
-  banco (`postgresql`), e nomes de tabelas, além de outras constantes
-  relacionadas ao banco.
-
-- **Entradas:**
-    - Recebe DataFrames do Pandas, que são o produto final do módulo `Processor`.
-    - Recebe o nome da tabela de destino e uma `policy` (política de
-      salvamento) que dita como os dados devem ser inseridos.
-
-- **Transformações/Processos:**
-    - **Gerenciamento de Conexão:** Utiliza `SQLAlchemy` para criar e gerenciar
-      um pool de conexões com o banco de dados.
-    - **Criação de Esquema (`create_tables`):** Executa instruções DDL (Data
-      Definition Language) para apagar (DROP) e recriar (CREATE) todas as
-      tabelas, views e relacionamentos necessários. O status padrão de um item
-      (`ATIVO`) é definido a partir do `Config`.
-    - **Políticas de Carga de Dados (`save_data`):**
-        - **`append`:** Insere novos registros, ignorando conflitos de chave
-          primária. Ideal para dados que não mudam, como histórico.
-        - **`upsert`:** Insere novos registros ou atualiza os existentes com base
-          na chave primária. Usado para atualizar catálogos de insumos e
-          composições.
-        - **`replace`:** Remove registros de um período específico (mês/ano)
-          antes de inserir os novos dados (não implementado no código fornecido).
-    - **Uso de Tabelas Temporárias:** Para operações de `append` e `upsert` em
-      larga escala, os dados são primeiro carregados em uma tabela temporária
-      (com prefixo definido no `Config`) e depois transferidos para a tabela
-      final com uma única instrução SQL, garantindo melhor desempenho e
-      atomicidade.
-
-- **Saídas:**
-    - A classe não retorna dados, mas modifica o estado do banco de dados,
-      populando-o com as informações processadas do SINAPI.
-    - Levanta exceções (`DatabaseError`) em caso de falhas de conexão ou
-      execução de queries para que o pipeline possa tratar o erro.
+PostgreSQL. Ele é responsável por criar o engine de conexão, gerenciar
+transações e executar as operações de salvamento de dados (DML).
 """
 
 import logging
@@ -81,6 +41,21 @@ class Database:
         except Exception as e:
             self.logger.error(f"Falha ao criar conexão com o banco de dados: {e}", exc_info=True)
             raise DatabaseError(f"Erro ao conectar com o banco de dados: {e}") from e
+
+    def check_tables(self):
+        """Verifica se as tabelas principais existem."""
+        query = text("""
+            SELECT count(*) FROM information_schema.tables 
+            WHERE table_schema = 'public' AND table_name = :t
+        """)
+        main_tables = [self.config.DB_TABLE_INSUMOS, self.config.DB_TABLE_COMPOSICOES]
+        with self._engine.connect() as conn:
+            for t in main_tables:
+                res = conn.execute(query, {"t": t}).scalar()
+                if res == 0:
+                    self.logger.warning(f"Tabela {t} não encontrada. Criando estrutura...")
+                    self.create_tables()
+                    break
 
     def create_tables(self):
         """Cria as tabelas do modelo de dados do SINAPI no banco."""
@@ -133,7 +108,7 @@ class Database:
             FOREIGN KEY (insumo_codigo) REFERENCES {self.config.DB_TABLE_INSUMOS}(codigo) ON DELETE CASCADE
         );
         CREATE TABLE {self.config.DB_TABLE_CUSTOS_COMPOSICOES} (
-            composicao_codigo INTEGER NOT NULL, uf CHAR(2) NOT NULL, data_referencia DATE NOT NULL, regime VARCHAR NOT NULL, custo_total NUMERIC, percentual_mo NUMERIC,
+            composicao_codigo INTEGER NOT NULL, uf CHAR(2) NOT NULL, data_referencia DATE NOT NULL, regime VARCHAR NOT NULL, custo_total NUMERIC,
             created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36),
             PRIMARY KEY (composicao_codigo, uf, data_referencia, regime),
             FOREIGN KEY (composicao_codigo) REFERENCES {self.config.DB_TABLE_COMPOSICOES}(codigo) ON DELETE CASCADE
@@ -153,45 +128,30 @@ class Database:
             FOREIGN KEY (composicao_filho_codigo) REFERENCES {self.config.DB_TABLE_COMPOSICOES}(codigo) ON DELETE CASCADE
         );
         CREATE TABLE {self.config.DB_TABLE_MANUTENCOES} (
-            item_codigo INTEGER NOT NULL, tipo_item VARCHAR NOT NULL, data_referencia DATE NOT NULL, tipo_manutencao TEXT NOT NULL, descricao_item TEXT,
+            item_codigo INTEGER NOT NULL, tipo_item VARCHAR(20) NOT NULL, data_referencia DATE NOT NULL, tipo_manutencao VARCHAR(20) NOT NULL,
             created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36),
             PRIMARY KEY (item_codigo, tipo_item, data_referencia, tipo_manutencao)
         );
         CREATE TABLE {self.config.DB_TABLE_AUDIT_LOG} (
-            id BIGSERIAL PRIMARY KEY, table_name VARCHAR(100) NOT NULL, record_pk JSONB NOT NULL, operation VARCHAR(10) NOT NULL,
-            old_values JSONB, new_values JSONB, sinapi_versao VARCHAR(20), etl_run_id VARCHAR(36), motivo_manutencao VARCHAR(200),
-            created_at TIMESTAMPTZ DEFAULT NOW()
+            run_id VARCHAR(36) PRIMARY KEY, data_referencia VARCHAR(20), records_inserted INTEGER, tables_updated TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
         );
-        -- audit indexes use table-specific names to avoid clashes
-        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_AUDIT_LOG}_table_name ON {self.config.DB_TABLE_AUDIT_LOG}(table_name);
-        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_AUDIT_LOG}_created_at ON {self.config.DB_TABLE_AUDIT_LOG}(created_at);
-        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_AUDIT_LOG}_etl_run ON {self.config.DB_TABLE_AUDIT_LOG}(etl_run_id);
-        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_INSUMOS}_updated_at ON {self.config.DB_TABLE_INSUMOS}(updated_at);
-        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_COMPOSICOES}_updated_at ON {self.config.DB_TABLE_COMPOSICOES}(updated_at);
-        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_PRECOS_INSUMOS}_updated_at ON {self.config.DB_TABLE_PRECOS_INSUMOS}(updated_at);
-        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_CUSTOS_COMPOSICOES}_updated_at ON {self.config.DB_TABLE_CUSTOS_COMPOSICOES}(updated_at);
-        CREATE INDEX IF NOT EXISTS idx_{self.config.DB_TABLE_MANUTENCOES}_data ON {self.config.DB_TABLE_MANUTENCOES}(data_referencia);
-        CREATE OR REPLACE VIEW vw_composicao_itens_unificados AS
-        SELECT composicao_pai_codigo, insumo_filho_codigo AS item_codigo, '{self.config.ITEM_TYPE_INSUMO}' AS tipo_item, coeficiente FROM {self.config.DB_TABLE_COMPOSICAO_INSUMOS}
-        UNION ALL
-        SELECT composicao_pai_codigo, composicao_filho_codigo AS item_codigo, '{self.config.ITEM_TYPE_COMPOSICAO}' AS tipo_item, coeficiente FROM {self.config.DB_TABLE_COMPOSICAO_SUBCOMPOSICOES};
+
+        CREATE VIEW vw_composicao_itens_unificados AS 
+        SELECT composicao_pai_codigo, insumo_filho_codigo AS item_codigo, 'INSUMO' AS tipo_item, coeficiente FROM {self.config.DB_TABLE_COMPOSICAO_INSUMOS}
+        UNION ALL 
+        SELECT composicao_pai_codigo, composicao_filho_codigo AS item_codigo, 'COMPOSICAO' AS tipo_item, coeficiente FROM {self.config.DB_TABLE_COMPOSICAO_SUBCOMPOSICOES};
         """
-        trans = None 
+
         try:
             with self._engine.connect() as conn:
                 trans = conn.begin()
-                self.logger.info("Recriando o esquema do banco de dados...")
-                for stmt in drop_statements.split(";"):
-                    if stmt.strip(): conn.execute(text(stmt))
-                for stmt in ddl.split(";"):
-                    if stmt.strip(): conn.execute(text(stmt))
+                conn.execute(text(drop_statements))
+                conn.execute(text(ddl))
                 trans.commit()
-            self.logger.info("Esquema do banco de dados recriado com sucesso.")
+            self.logger.info("Tabelas do SINAPI criadas com sucesso.")
         except Exception as e:
-            if trans: 
-                trans.rollback()
-            self.logger.error(f"Erro ao recriar tabelas: {e}", exc_info=True)
-            raise DatabaseError(f"Erro ao recriar as tabelas: {str(e)}") from e
+            self.logger.error(f"Erro ao criar tabelas: {e}", exc_info=True)
+            raise DatabaseError(f"Erro ao criar estrutura do banco: {e}") from e
 
     def save_data(self, data: pd.DataFrame, table_name: str, policy: str, **kwargs):
         if data.empty:
@@ -200,19 +160,18 @@ class Database:
 
         self.logger.info(f"Salvando dados na tabela '{table_name}' com política '{policy.upper()}'.")
         
-        # Propagar traceability fields
+        # Propagar traceability fields de forma segura
         sinapi_versao = kwargs.get("sinapi_versao")
         etl_run_id = kwargs.get("etl_run_id")
         
-        # Add columns if they don't exist, always propagate values
         if sinapi_versao:
-            data["sinapi_versao"] = sinapi_versao
+            data.loc[:, "sinapi_versao"] = sinapi_versao
         if etl_run_id:
-            # Convert string run_id to proper UUID for database column
             try:
-                data["etl_run_id"] = uuid.UUID(str(etl_run_id))
+                run_uuid = uuid.UUID(str(etl_run_id))
             except (ValueError, AttributeError):
-                data["etl_run_id"] = uuid.uuid5(uuid.NAMESPACE_DNS, str(etl_run_id))
+                run_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, str(etl_run_id))
+            data.loc[:, "etl_run_id"] = str(run_uuid)
         
         if policy.lower() == self.config.DB_POLICY_REPLACE:
             year = kwargs.get("year")
@@ -227,85 +186,31 @@ class Database:
             if not pk_columns:
                 raise DatabaseError("Política 'upsert' requer 'pk_columns'.")
             self._upsert_data(data, table_name, pk_columns)
-        else:
-            raise DatabaseError(f"Política de duplicatas desconhecida: {policy}")
 
     def _append_data(self, data: pd.DataFrame, table_name: str, **kwargs):
-        self.logger.info(f"Inserindo/atualizando {len(data)} registros em '{table_name}' (política: upsert-on-append).")
-        temp_table_name = f"{self.config.DB_TEMP_TABLE_PREFIX}{table_name}"
-        with self._engine.connect() as conn:
-            data.to_sql(name=temp_table_name, con=conn, if_exists="replace", index=False)
-            pk_cols_query = text(f"""
-                SELECT a.attname FROM pg_index i
-                JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-                WHERE i.indrelid = '{table_name}'::regclass AND i.indisprimary;
-            """)
-            trans = conn.begin()
-            try:
-                pk_cols_result = conn.execute(pk_cols_query).fetchall()
-                if not pk_cols_result:
-                    raise DatabaseError(f"Nenhuma chave primária encontrada para a tabela {table_name}.")
-                
-                pk_cols = [row[0] for row in pk_cols_result]
-                pk_cols_str = ", ".join(pk_cols)
-                # Deduplicate: use DISTINCT ON to avoid ON CONFLICT cardinality errors
-                pk_ordered = ", ".join([f'\"{c}\"' for c in pk_cols])
-                cols = ", ".join([f'\"{c}\"' for c in data.columns])
-                
-                # UPSERT: Insert or Update on conflict
-                update_cols = ", ".join([
-                    f'\"{c}\" = EXCLUDED.\"{c}\"' 
-                    for c in data.columns 
-                    if c not in pk_cols
-                ])
-                if update_cols:
-                    update_cols += f', "updated_at" = NOW()'
-                
-                insert_query = f'''
-                    INSERT INTO \"{table_name}\" ({cols})
-                    SELECT DISTINCT ON ({pk_ordered}) {cols} FROM \"{temp_table_name}\"
-                    ORDER BY {pk_ordered}
-                    ON CONFLICT ({pk_cols_str}) DO UPDATE SET {update_cols};
-                '''
-                conn.execute(text(insert_query))
-                conn.execute(text(f'DROP TABLE "{temp_table_name}" CASCADE'))
-                trans.commit()
-            except Exception as e:
-                trans.rollback()
-                self.logger.error(f"Erro ao inserir dados em {table_name}: {e}", exc_info=True)
-                raise DatabaseError(f"Erro ao inserir dados em {table_name}: {str(e)}") from e
-
-    def _replace_data(self, data: pd.DataFrame, table_name: str, year: str, month: str):
-        self.logger.info(f"Substituindo dados em '{table_name}' para o período {year}-{month}.")
-        delete_query = text(f'DELETE FROM "{table_name}" WHERE TO_CHAR(data_referencia, \'YYYY-MM\') = :ref')
-        with self._engine.connect() as conn:
-            trans = conn.begin()
-            try:
-                conn.execute(delete_query, {"ref": f"{year}-{month}"})
+        self.logger.info(f"Inserindo {len(data)} registros em '{table_name}' (política: append).")
+        try:
+            with self._engine.connect() as conn:
                 data.to_sql(name=table_name, con=conn, if_exists="append", index=False)
-                trans.commit()
-            except Exception as e:
-                trans.rollback()
-                self.logger.error(f"Erro ao substituir dados em {table_name}: {e}", exc_info=True)
-                raise DatabaseError(f"Erro ao substituir dados: {str(e)}") from e
+        except Exception as e:
+            self.logger.error(f"Erro ao inserir dados em {table_name}: {e}", exc_info=True)
+            raise DatabaseError(f"Erro ao inserir dados: {str(e)}") from e
 
     def _upsert_data(self, data: pd.DataFrame, table_name: str, pk_columns: list):
         self.logger.info(f"Executando UPSERT de {len(data)} registros em '{table_name}'.")
         temp_table_name = f"{self.config.DB_TEMP_TABLE_PREFIX}{table_name}"
         with self._engine.connect() as conn:
+            # Garante que as colunas existam no banco antes do UPSERT
             data.to_sql(name=temp_table_name, con=conn, if_exists="replace", index=False)
-            cols = ", ".join([f'\"{c}\"' for c in data.columns])
-            pk_cols_str = ", ".join(pk_columns)
-            update_cols = ", ".join([f'\"{c}\" = EXCLUDED.\"{c}\"' for c in data.columns if c not in pk_columns])
             
-            if not update_cols:
-                self._append_data(data, table_name)
-                return
+            cols = ", ".join([f'"{c}"' for c in data.columns])
+            pk_cols_str = ", ".join([f'"{c}"' for c in pk_columns])
+            update_cols = ", ".join([f'"{c}" = EXCLUDED."{c}"' for c in data.columns if c not in pk_columns and c != 'created_at'])
 
             query = f'''
-                INSERT INTO \"{table_name}\" ({cols})
-                SELECT {cols} FROM \"{temp_table_name}\" 
-                ON CONFLICT ({pk_cols_str}) DO UPDATE SET {update_cols};
+                INSERT INTO "{table_name}" ({cols})
+                SELECT {cols} FROM "{temp_table_name}"
+                ON CONFLICT ({pk_cols_str}) DO UPDATE SET {update_cols}, "updated_at" = NOW();
             '''
             trans = conn.begin()
             try:
@@ -315,76 +220,32 @@ class Database:
             except Exception as e:
                 trans.rollback()
                 self.logger.error(f"Erro no UPSERT para {table_name}: {e}", exc_info=True)
-                raise DatabaseError(f"Erro no UPSERT para {table_name}: {str(e)}") from e
+                raise DatabaseError(f"Erro no UPSERT: {str(e)}") from e
 
-    def truncate_table(self, table_name: str):
-        self.logger.info(f"Limpando tabela: {table_name}")
-        query = f'TRUNCATE TABLE "{table_name}" RESTART IDENTITY CASCADE'
+    def _replace_data(self, data: pd.DataFrame, table_name: str, year: str, month: str):
+        ref = f"{year}-{month:02d}"
+        self.logger.info(f"Substituindo dados em '{table_name}' para o período {ref}.")
+        delete_query = text(f"DELETE FROM \"{table_name}\" WHERE TO_CHAR(data_referencia, 'YYYY-MM') = :ref")
+        with self._engine.connect() as conn:
+            trans = conn.begin()
+            try:
+                conn.execute(delete_query, {"ref": ref})
+                data.to_sql(name=table_name, con=conn, if_exists="append", index=False)
+                trans.commit()
+            except Exception as e:
+                trans.rollback()
+                self.logger.error(f"Erro ao substituir dados: {e}", exc_info=True)
+                raise DatabaseError(f"Erro ao substituir dados: {str(e)}") from e
+
+    def register_audit_log(self, run_id, data_ref, records, tables):
+        query = text(f"INSERT INTO {self.config.DB_TABLE_AUDIT_LOG} (run_id, data_referencia, records_inserted, tables_updated) VALUES (:id, :ref, :rec, :tabs)")
         try:
             with self._engine.connect() as conn:
                 trans = conn.begin()
-                conn.execute(text(query))
+                conn.execute(query, {"id": run_id, "ref": data_ref, "rec": records, "tabs": str(tables)})
                 trans.commit()
         except Exception as e:
-            trans.rollback()
-            self.logger.error(f"Falha ao truncar tabela {table_name}. Query: '{query}'", exc_info=True)
-            raise DatabaseError(f"Erro ao truncar a tabela {table_name}: {str(e)}") from e
+            self.logger.error(f"Erro ao registrar audit log: {e}")
 
-    def execute_query(self, query: str, params: Dict[str, Any] = None) -> pd.DataFrame:
-        try:
-            with self._engine.connect() as conn:
-                result = conn.execute(text(query), params or {})
-                return pd.DataFrame(result.fetchall(), columns=result.keys())
-        except Exception as e:
-            self.logger.error(f"Erro ao executar query. Query: '{query}'", exc_info=True)
-            raise DatabaseError(f"Erro ao executar query: {str(e)}") from e
-
-    def execute_non_query(self, query: str, params: Dict[str, Any] = None) -> int:
-        try:
-            with self._engine.connect() as conn:
-                trans = conn.begin()
-                result = conn.execute(text(query), params or {})
-                trans.commit()
-                return result.rowcount
-        except Exception as e:
-            trans.rollback()
-            self.logger.error(f"Erro ao executar non-query. Query: '{query}'", exc_info=True)
-            raise DatabaseError(f"Erro ao executar non-query: {str(e)}") from e
-
-    def _log_audit_event(self, table_name: str, record_pk: dict, operation: str, 
-                         old_values: dict = None, new_values: dict = None,
-                         sinapi_versao: str = None, etl_run_id: str = None,
-                         motivo_manutencao: str = None):
-        """Registra evento no sinapi_audit_log."""
-        audit_table = self.config.DB_TABLE_AUDIT_LOG
-        query = text(f"""
-            INSERT INTO {audit_table}
-            (table_name, record_pk, operation, old_values, new_values, 
-             sinapi_versao, etl_run_id, motivo_manutencao)
-            VALUES (:table_name, :record_pk, :operation, :old_values, :new_values,
-                    :sinapi_versao, :etl_run_id, :motivo_manutencao)
-        """)
-        params = {
-            "table_name": table_name,
-            "record_pk": json.dumps(record_pk),
-            "operation": operation,
-            "old_values": json.dumps(old_values) if old_values else None,
-            "new_values": json.dumps(new_values) if new_values else None,
-            "sinapi_versao": sinapi_versao,
-            "etl_run_id": etl_run_id,
-            "motivo_manutencao": motivo_manutencao,
-        }
-        try:
-            with self._engine.connect() as conn:
-                trans = conn.begin()
-                conn.execute(query, params)
-                trans.commit()
-        except Exception as e:
-            self.logger.error(f"Erro ao registrar audit log: {e}", exc_info=True)
-            # Não levanta exceção para não quebrar o pipeline principal
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self._engine.dispose()
+    def __enter__(self): return self
+    def __exit__(self, exc_type, exc_val, exc_tb): self._engine.dispose()

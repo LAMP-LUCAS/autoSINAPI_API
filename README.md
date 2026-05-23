@@ -101,7 +101,8 @@ A autoSINAPI API vai além de simples consultas. Oferecemos endpoints de BI que 
 -   **Hora/Homem Total:** Calcule o total de horas de mão de obra em qualquer composição.
 -   **Otimizador de Custo:** Identifique os 5 maiores vilões de custo em qualquer serviço.
 -   **Curva ABC:** Envie seu orçamento e descubra quais insumos representam 80% do seu custo.
--   **Série Histórica:** Analise a "inflação" de um insumo ou composição ao longo do tempo.
+-   **Tendências de Volatilidade:** Analise a inflação setorial agrupada por **Classificação (Insumos)** ou **Grupo (Composições)**, ou monitore a evolução de **Itens Específicos** ao longo de 12 meses.
+-   **Série Histórica:** Evolução mensal de preços para um item individual.
 -   **Comparativo Regional:** Compare preços de um mesmo item em diferentes estados do Brasil.
 
 ### 🖥️ Frontend Demo

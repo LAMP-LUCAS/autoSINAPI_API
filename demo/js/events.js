@@ -182,6 +182,10 @@ export function createEvents(dom, { search, abc, compare, theme, toast, state, u
     trends() {
       dom.trendsForm?.addEventListener('submit', e => { e.preventDefault(); trends.perform(); });
       dom.trendsBtn?.addEventListener('click', () => trends.perform());
+      dom.trendsGroupBy?.addEventListener('change', e => {
+        const isItem = e.target.value === 'item';
+        dom.trendsCodesCol?.classList.toggle('hidden', !isItem);
+      });
     },
 
     // Sprint 1c — Comparison Cross

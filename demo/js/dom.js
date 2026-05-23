@@ -113,6 +113,9 @@ export function createDom() {
     // Trends (1.10)
     trendsForm: $('#trendsForm'),
     trendsBtn: $('#trendsBtn'),
+    trendsGroupBy: $('#trendsGroupBy'),
+    trendsCodesCol: $('#trendsCodesCol'),
+    trendsCodes: $('#trendsCodes'),
     trendsStateFilter: $('#trendsStateFilter'),
     trendsDateFilter: $('#trendsDateFilter'),
     trendsRegimeFilter: $('#trendsRegimeFilter'),

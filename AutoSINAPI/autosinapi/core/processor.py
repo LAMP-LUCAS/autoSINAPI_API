@@ -289,10 +289,11 @@ class Processor:
                     cols["CODIGO_COMPOSICAO"]: "codigo",
                     cols["DESCRICAO_ITEM"]: "descricao",
                     cols["UNIDADE_ITEM"]: "unidade",
+                    cols["GRUPO_COMPOSICAO"]: "grupo",
                 }
             )
             parent_composicoes_df = parent_composicoes_df[
-                ["codigo", "descricao", "unidade"]
+                ["codigo", "descricao", "unidade", "grupo"]
             ].drop_duplicates(subset=["codigo"])
 
             child_item_details = subitens[
@@ -424,20 +425,35 @@ class Processor:
         self, all_dfs: Dict, temp_insumos: List, temp_composicoes: List
     ) -> Dict:
         self.logger.info("Agregando e finalizando DataFrames...")
+
         if temp_insumos:
-            all_insumos = pd.concat(
-                temp_insumos, ignore_index=True
-            ).drop_duplicates(subset=["CODIGO"])
+            all_insumos = pd.concat(temp_insumos, ignore_index=True)
+            
+            # Priorizar linhas com CLASSIFICACAO preenchida
+            if "CLASSIFICACAO" in all_insumos.columns:
+                # Cria coluna temporária: 1 se tem valor, 0 se é nulo/vazio
+                all_insumos["_has_class"] = all_insumos["CLASSIFICACAO"].notnull() & (all_insumos["CLASSIFICACAO"] != "")
+                all_insumos.sort_values(by=["CODIGO", "_has_class"], ascending=[True, False], inplace=True)
+                all_insumos.drop(columns=["_has_class"], inplace=True)
+
+            all_insumos.drop_duplicates(subset=["CODIGO"], keep="first", inplace=True)
             all_dfs["insumos"] = all_insumos.rename(
                 columns=self.config.FINAL_CATALOG_COLUMNS
             )
             self.logger.info(
                 f"Catálogo de insumos finalizado com {len(all_insumos)} registros únicos."
             )
+
         if temp_composicoes:
-            all_composicoes = pd.concat(
-                temp_composicoes, ignore_index=True
-            ).drop_duplicates(subset=["CODIGO"])
+            all_composicoes = pd.concat(temp_composicoes, ignore_index=True)
+            
+            # Priorizar linhas com GRUPO preenchido
+            if "GRUPO" in all_composicoes.columns:
+                all_composicoes["_has_group"] = all_composicoes["GRUPO"].notnull() & (all_composicoes["GRUPO"] != "")
+                all_composicoes.sort_values(by=["CODIGO", "_has_group"], ascending=[True, False], inplace=True)
+                all_composicoes.drop(columns=["_has_group"], inplace=True)
+
+            all_composicoes.drop_duplicates(subset=["CODIGO"], keep="first", inplace=True)
             all_dfs["composicoes"] = all_composicoes.rename(
                 columns=self.config.FINAL_CATALOG_COLUMNS
             )

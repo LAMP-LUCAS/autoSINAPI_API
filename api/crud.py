@@ -318,38 +318,72 @@ def get_abc_by_classificacao(
     return categorias
 
 @cache_result(ttl=86400)
-def get_tendencias_by_classificacao(
-    db: Session, uf: str, regime: str, data_referencia: str, meses: int = 12
+def get_tendencias(
+    db: Session, uf: str, regime: str, data_referencia: str, agrupar_por: str = 'classificacao', meses: int = 12, codigos: List[int] = None
 ) -> List[dict]:
     """
-    Retorna a evolução mensal do preço médio por classificação de insumo
-    para análise de tendências e volatilidade.
+    Retorna a evolução mensal do preço/custo médio agrupado por classificação, grupo ou item individual.
     """
     s_date, e_date = _get_date_range(data_referencia)
-    from datetime import timedelta
     from dateutil.relativedelta import relativedelta
     end_date = e_date
     start_date = s_date - relativedelta(months=meses)
-    query = text(f"""
-        SELECT 
-               CASE 
-                   WHEN i.classificacao IS NULL OR TRIM(i.classificacao) = '' OR UPPER(TRIM(i.classificacao)) = 'NAO_CLASSIFICADO' THEN 'GERAL'
-                   ELSE UPPER(TRIM(i.classificacao)) 
-               END as classificacao,
-               TO_CHAR(p.data_referencia, 'YYYY-MM') as mes,
-               AVG(p.preco_mediano) as preco_medio,
-               COUNT(DISTINCT i.codigo) as qtd_insumos
-        FROM {settings.TABLE_PRECOS_INSUMOS} p
-        JOIN {settings.TABLE_INSUMOS} i ON i.codigo = p.insumo_codigo
-        WHERE p.uf = :uf AND p.regime = :regime
-          AND p.data_referencia >= :start_date AND p.data_referencia <= :end_date
-        GROUP BY 1, 2
-        ORDER BY 1, mes
-    """)
-    result = db.execute(query, {
+    
+    if agrupar_por == 'grupo':
+        table_val = settings.TABLE_CUSTOS_COMPOSICOES
+        table_item = settings.TABLE_COMPOSICOES
+        col_item = 'composicao_codigo'
+        col_group = 'grupo'
+        val_name = 'custo_total'
+    elif agrupar_por == 'item':
+        # Para itens individuais, podemos usar insumos ou composições.
+        # Por padrão, vamos focar em insumos se não houver codigos, ou tentar detectar.
+        # Mas para simplificar, se 'item', vamos usar codigos obrigatoriamente.
+        table_val = settings.TABLE_PRECOS_INSUMOS
+        table_item = settings.TABLE_INSUMOS
+        col_item = 'insumo_codigo'
+        col_group = 'descricao' # Group by desc to show name
+        val_name = 'preco_mediano'
+    else:
+        table_val = settings.TABLE_PRECOS_INSUMOS
+        table_item = settings.TABLE_INSUMOS
+        col_item = 'insumo_codigo'
+        col_group = 'classificacao'
+        val_name = 'preco_mediano'
+
+    where_clause = "WHERE p.uf = :uf AND p.regime = :regime AND p.data_referencia >= :start_date AND p.data_referencia <= :end_date"
+    params = {
         "uf": uf.upper(), "regime": regime.upper(),
         "start_date": start_date, "end_date": end_date
-    }).fetchall()
+    }
+
+    if codigos:
+        where_clause += " AND i.codigo IN :codigos"
+        params["codigos"] = tuple(codigos)
+
+    group_cols = "1, 2"
+    if agrupar_por == 'item':
+        group_cols = "i.codigo, i.descricao, 2"
+        select_group = "i.codigo || ' - ' || i.descricao"
+    else:
+        select_group = f"""
+               CASE 
+                   WHEN i.{col_group} IS NULL OR TRIM(i.{col_group}) = '' OR UPPER(TRIM(i.{col_group})) = 'NAO_CLASSIFICADO' THEN 'GERAL'
+                   ELSE UPPER(TRIM(i.{col_group})) 
+               END"""
+
+    query = text(f"""
+        SELECT {select_group} as classificacao,
+               TO_CHAR(p.data_referencia, 'YYYY-MM') as mes,
+               AVG(p.{val_name}) as preco_medio,
+               COUNT(DISTINCT i.codigo) as qtd_insumos
+        FROM {table_val} p
+        JOIN {table_item} i ON i.codigo = p.{col_item}
+        {where_clause}
+        GROUP BY {group_cols}
+        ORDER BY 1, mes
+    """)
+    result = db.execute(query, params).fetchall()
     return [dict(r._mapping) for r in result]
 
 def get_precos_all_ufs(

@@ -5,8 +5,16 @@ export function createTrends(config, state, dom, utils, api, toast) {
     const uf = dom.trendsStateFilter?.value;
     const date = dom.trendsDateFilter?.value;
     const regime = dom.trendsRegimeFilter?.value;
+    const groupBy = dom.trendsGroupBy?.value || 'classificacao';
+    const codes = dom.trendsCodes?.value?.trim();
+
     if (!uf || !date) {
       toast.show('Selecione UF e data de referência', 'warning');
+      return;
+    }
+
+    if (groupBy === 'item' && !codes) {
+      toast.show('Digite os códigos para análise individual', 'warning');
       return;
     }
 
@@ -15,14 +23,18 @@ export function createTrends(config, state, dom, utils, api, toast) {
     dom.trendsResults?.classList.add('hidden');
 
     try {
-      const data = await api.request(`${ENDPOINT}?uf=${uf}&data_referencia=${date}&regime=${regime}&meses=12`);
+      let url = `${ENDPOINT}?uf=${uf}&data_referencia=${date}&regime=${regime}&agrupar_por=${groupBy}&meses=12`;
+      if (codes) url += `&codigos=${encodeURIComponent(codes)}`;
+      
+      const data = await api.request(url);
       state.trends.data = data;
+      
       if (!data || data.length === 0) {
         toast.show('Nenhum dado de tendência encontrado para os filtros selecionados.', 'info');
         dom.trendsResults?.classList.add('hidden');
       } else {
         renderChart(data);
-        renderTable(data);
+        renderTable(data, groupBy);
         dom.trendsResults?.classList.remove('hidden');
       }
     } catch (err) {
@@ -102,14 +114,34 @@ export function createTrends(config, state, dom, utils, api, toast) {
     });
   }
 
-  function renderTable(data) {
+  function renderTable(data, groupBy) {
     const groups = {};
     for (const item of data) {
       if (!groups[item.classificacao]) groups[item.classificacao] = [];
       groups[item.classificacao].push(item);
     }
 
-    const tbody = dom.trendsTable?.querySelector('tbody');
+    const table = dom.trendsTable;
+    if (!table) return;
+
+    const label = groupBy === 'classificacao' ? 'Classificação' : groupBy === 'grupo' ? 'Grupo' : 'Item (Código - Descrição)';
+    const itemLabel = groupBy === 'classificacao' ? 'Insumos' : groupBy === 'grupo' ? 'Composições' : 'Item';
+
+    // Update header
+    const thead = table.querySelector('thead');
+    if (thead) {
+      thead.innerHTML = `
+        <tr>
+          <th scope="col">${label}</th>
+          <th scope="col">Qtd. ${itemLabel}</th>
+          <th scope="col">Preço Inicial</th>
+          <th scope="col">Preço Final</th>
+          <th scope="col">Variação (%)</th>
+        </tr>
+      `;
+    }
+
+    const tbody = table.querySelector('tbody');
     if (!tbody) return;
 
     const sorted = Object.entries(groups)

@@ -14,7 +14,7 @@ import logging
 import redis
 from celery.result import AsyncResult
 from .sandbox_utils import is_sandbox_mode
-from typing import List
+from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, Query, Body, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -431,14 +431,23 @@ def get_tendencias_classificacao(
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
     data_referencia: str = Query(..., description="Data de referência final no formato AAAA-MM. Ex: 2025-09"),
     regime: str = Query("NAO_DESONERADO", description="Regime de preço."),
+    agrupar_por: str = Query("classificacao", description="Campo para agrupamento: 'classificacao' (Insumos), 'grupo' (Composições) ou 'item' (Itens individuais)."),
+    codigos: Optional[str] = Query(None, description="Lista de códigos separados por vírgula para filtrar itens específicos."),
     meses: int = Query(12, description="Número de meses a serem analisados para trás."),
     db: Session = Depends(get_db)
 ):
     """
-    Retorna a evolução mensal do preço médio por classificação de insumo
-    para análise de tendências e volatilidade de categorias de materiais.
+    Retorna a evolução mensal do preço/custo médio agrupado por classificação de insumo,
+    grupo de composição ou item individual para análise de tendências e volatilidade.
     """
-    result = crud.get_tendencias_by_classificacao(db, uf=uf, regime=regime, data_referencia=data_referencia, meses=meses)
+    code_list = None
+    if codigos:
+        try:
+            code_list = [int(c.strip()) for c in codigos.split(",") if c.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="O parâmetro 'codigos' deve conter apenas números separados por vírgula.")
+
+    result = crud.get_tendencias(db, uf=uf, regime=regime, data_referencia=data_referencia, agrupar_por=agrupar_por, meses=meses, codigos=code_list)
     if not result:
         raise HTTPException(status_code=404, detail="Nenhum dado de tendência encontrado para os filtros especificados.")
     return result

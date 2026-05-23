@@ -347,6 +347,18 @@
             <form id="trendsForm">
                 <div class="search-filters" style="justify-content: center;">
                     <div class="filter-col">
+                        <label for="trendsGroupBy">Agrupar por</label>
+                        <select id="trendsGroupBy">
+                            <option value="classificacao">Classificação (Insumos)</option>
+                            <option value="grupo">Grupo (Composições)</option>
+                            <option value="item">Itens Específicos</option>
+                        </select>
+                    </div>
+                    <div class="filter-col hidden" id="trendsCodesCol">
+                        <label for="trendsCodes">Códigos (vírgula)</label>
+                        <input type="text" id="trendsCodes" placeholder="Ex: 370, 88316" aria-label="Códigos específicos para tendências">
+                    </div>
+                    <div class="filter-col">
                         <label for="trendsStateFilter">Estado (UF)</label>
                         <select id="trendsStateFilter" class="dynamic-uf"><option value="">Carregando...</option></select>
                     </div>
