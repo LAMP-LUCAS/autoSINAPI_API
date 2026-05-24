@@ -43,4 +43,8 @@ Permitir que o usuário combine dados oficiais com seus próprios custos.
 
 ---
 
-**Nota:** Este roteiro é uma declaração de intenções técnica. Contribuições da comunidade são bem-vindas via Pull Requests seguindo a licença GPL-v3.
+**Nota:** Este roteiro é uma declaração de intenções técnica. Com a nova arquitetura modular:
+- A **Fase 2 (Inteligência de Dados e ETL)** será desenvolvida prioritariamente no repositório [AutoSINAPI (Toolkit)](https://github.com/LAMP-LUCAS/AutoSINAPI).
+- As **Fases 3 e 4 (Integrações e UX)** serão o foco deste repositório da API.
+
+Contribuições da comunidade são bem-vindas via Pull Requests seguindo a licença GPL-v3.

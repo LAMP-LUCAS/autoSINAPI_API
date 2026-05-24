@@ -44,6 +44,14 @@ Utilizamos o padrão [Conventional Commits](https://www.conventionalcommits.org/
 -   **Python (API e Worker)**: O código segue o padrão **PEP 8**. Usamos `snake_case` para variáveis e funções e `PascalCase` para classes.
 -   **Infraestrutura (Docker & Kong)**: Nomes de serviços e contêineres devem ser em `snake_case` e descritivos (ex: `celery_worker`, `sinapi_gateway`).
 
+### 4. Trabalhando com o Toolkit (Submódulo)
+
+O core de processamento de dados (`AutoSINAPI/`) é um **submódulo Git** vinculado ao repositório [AutoSINAPI](https://github.com/LAMP-LUCAS/AutoSINAPI).
+
+- **Mudanças no Core:** Devem ser commitadas e enviadas para o repositório do Toolkit.
+- **Mudanças na API:** Devem ser commitadas neste repositório.
+- **Sincronia:** Se você atualizar o Toolkit, lembre-se de atualizar o ponteiro do submódulo neste repositório com um commit de "update submodule".
+
 ---
 
 ## Submetendo Alterações

@@ -28,10 +28,14 @@ Se você trabalha com orçamentos de obra, sabe o quão repetitivo e frustrante 
 
 Tenha sua própria instância da API, com banco de dados e toda a infraestrutura, rodando localmente com apenas 5 passos.
 
-1.  **Clone o Repositório**
+1.  **Clone o Repositório (com Submódulos)**
     ```bash
-    git clone https://github.com/LAMP-LUCAS/autoSINAPI_API.git
+    git clone --recursive https://github.com/LAMP-LUCAS/autoSINAPI_API.git
     cd autoSINAPI_API
+    ```
+    *Caso já tenha clonado sem o `--recursive`, execute:*
+    ```bash
+    git submodule update --init --recursive
     ```
 
 2.  **Configure o Ambiente**

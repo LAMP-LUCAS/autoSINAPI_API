@@ -1,5 +1,10 @@
 
-.PHONY: up down populate-db logs-api logs-kong status
+.PHONY: setup up down populate-db logs-api logs-kong status
+
+setup:
+	@echo "🔧 Inicializando submódulos e ambiente..."
+	git submodule update --init --recursive
+	cp .env.example .env
 
 up:
 	@echo "Iniciando os containers Docker em modo detached..."
@@ -24,3 +29,10 @@ logs-kong:
 status:
 	@echo "Verificando o status dos containers..."
 	docker compose ps
+
+test-env:
+	@echo "🛠️ Construindo imagem de teste isolada..."
+	docker build -t autosinapi-test-runner -f tests/Dockerfile.test .
+	@echo "🧪 Executando testes de build e orquestração em ambiente isolado..."
+	docker run --rm -v $$(pwd):/app:ro autosinapi-test-runner
+

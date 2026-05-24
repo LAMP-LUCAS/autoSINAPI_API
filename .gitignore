@@ -60,6 +60,7 @@ env.bak
 venv.bak
 .manage-kong
 autosinapi_downloads/
+deploy.config
 
 # Docker
 .dockerignore
