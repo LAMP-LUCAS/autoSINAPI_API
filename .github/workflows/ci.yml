@@ -1,0 +1,41 @@
+name: CI - API and Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive # CRÍTICO: Puxa o Toolkit
+
+    - name: Set up Environment
+      run: cp .env.example .env
+
+    - name: Build Docker Stack
+      run: docker compose build
+
+    - name: Start Services
+      run: docker compose up -d db redis kong-migrations
+
+    - name: Wait for Database
+      run: |
+        until docker compose exec db pg_isready -U admin -d sinapi; do
+          echo "Waiting for database..."
+          sleep 2
+        done
+
+    - name: Validate Populate-DB (Smoke Test)
+      run: |
+        echo "🧪 Executando teste de fumaça do ETL..."
+        # Rodamos um comando simplificado apenas para verificar se o motor do Toolkit liga corretamente dentro do container da API
+        docker compose run --rm api python3 -c "from autosinapi.etl_pipeline import SinapiPipeline; print('✅ Toolkit importado com sucesso na API')"
+      
+    - name: Cleanup
+      if: always()
+      run: docker compose down -v
