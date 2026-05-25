@@ -1,0 +1,21 @@
+# .github/workflows/draft-release.yml
+
+name: Draft a new release
+
+on:
+  push:
+    branches:
+      - develop # Roda toda vez que algo é mesclado em develop
+
+jobs:
+  update_release_draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: release-drafter/release-drafter@v5
+        with:
+          # (Opcional) Publica a release se a tag corresponder,
+          # mas para o seu caso, vamos deixar o seu 'release.yml' cuidar disso.
+          # A principal função aqui é apenas ATUALIZAR o rascunho.
+          publish: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

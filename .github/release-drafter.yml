@@ -1,0 +1,35 @@
+# .github/release-drafter.yml
+
+# Define as categorias com base nos tipos de Conventional Commits
+categories:
+  - title: '🚀 Novas Funcionalidades'
+    labels:
+      - 'feature'
+      - 'feat'
+  - title: '🐛 Correções de Bugs'
+    labels:
+      - 'fix'
+      - 'bug'
+  - title: '🔧 Melhorias e Refatorações'
+    labels:
+      - 'refactor'
+      - 'chore'
+  - title: '📚 Documentação'
+    labels:
+      - 'docs'
+
+# Exclui labels que não devem aparecer no changelog
+exclude-labels:
+  - 'skip-changelog'
+
+# O template do corpo da sua release.
+# A variável $CHANGES será substituída pela lista categorizada de mudanças.
+template: |
+  ## O que há de novo nesta versão?
+
+  *Aqui você pode escrever sua copy, explicando o objetivo principal da release.*
+
+  $CHANGES
+
+  ---
+  **Agradecemos a todos os contribuidores!** 🎉

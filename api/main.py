@@ -8,8 +8,18 @@ orquestrando as chamadas para as funções do módulo `crud` e utilizando os
 """
 
 import os
-from typing import List
-from fastapi import FastAPI, Depends, HTTPException, Query, Body, Path
+import json
+import time
+import logging
+import redis
+from celery.result import AsyncResult
+from .sandbox_utils import is_sandbox_mode
+from typing import List, Optional
+from fastapi import FastAPI, Depends, HTTPException, Query, Body, Path, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
@@ -17,9 +27,36 @@ from dateutil.relativedelta import relativedelta
 from . import crud, schemas, config
 from .database import get_db
 from .tasks import populate_sinapi_task
+from .cache_utils import redis_client as cache_redis
 
 # Carrega as configurações uma vez
 settings = config.settings
+
+# Structured Logging
+class JSONLogFormatter(logging.Formatter):
+    def format(self, record):
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if hasattr(record, "endpoint"):
+            log_entry["endpoint"] = record.endpoint
+        if hasattr(record, "duration"):
+            log_entry["duration_ms"] = round(record.duration * 1000, 2)
+        if record.exc_info and record.exc_info[0]:
+            log_entry["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_entry, ensure_ascii=False)
+
+# Configure root logger with JSON format
+json_handler = logging.StreamHandler()
+json_handler.setFormatter(JSONLogFormatter())
+root_logger = logging.getLogger()
+root_logger.handlers = [json_handler]
+root_logger.setLevel(logging.INFO)
+
+logger = logging.getLogger("autosinapi.api")
 
 app = FastAPI(
     title="AutoSINAPI API",
@@ -27,25 +64,138 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS.split(",") if settings.ALLOWED_ORIGINS != "*" else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Serve static GeoJSON data
+import os
+_data_dir = os.path.join(os.path.dirname(__file__), "..", "demo", "data")
+if os.path.isdir(_data_dir):
+    app.mount("/api/v1/public/data/geo", StaticFiles(directory=_data_dir), name="data")
+
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration = time.time() - start
+    extra = {"endpoint": request.url.path, "duration": duration}
+    logger.info(f"{request.method} {request.url.path} {response.status_code}", extra=extra)
+    return response
+
+@app.get("/api/v1/public/health", tags=["Health"])
+def health_check(db: Session = Depends(get_db)):
+    """
+    Health check endpoint. Retorna status do banco, Redis e versão da API.
+    """
+    checks = {"status": "healthy", "version": "1.0.0", "timestamp": datetime.utcnow().isoformat() + "Z"}
+
+    try:
+        db.execute(text("SELECT 1"))
+        checks["database"] = "connected"
+    except Exception as e:
+        checks["database"] = f"error: {str(e)}"
+        checks["status"] = "degraded"
+
+    try:
+        cache_redis.ping()
+        checks["redis"] = "connected"
+    except Exception as e:
+        checks["redis"] = f"error: {str(e)}"
+        checks["status"] = "degraded"
+
+    status_code = 200 if checks["status"] == "healthy" else 503
+    return JSONResponse(content=checks, status_code=status_code)
+
+# Conexão direta com Redis para lock de tarefas (idempotência)
+redis_client = redis.Redis(host=os.getenv("REDIS_HOST", "redis"), port=6379, db=0)
+
+@app.get("/api/v1/public/stats", tags=["Public"])
+def get_database_stats(db: Session = Depends(get_db)):
+    """
+    Retorna estatísticas de volumetria do banco de dados.
+    """
+    return crud.get_global_stats(db)
+
+@app.get("/api/v1/public/filters", tags=["Public"])
+def get_filters(
+    tipo: str = Query(None, description="Filtrar por tipo: 'insumo' (retorna classificacoes) ou 'composicao' (retorna grupos)."),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna os filtros dinâmicos disponíveis no banco.
+    Opcionalmente filtra por tipo para retornar classificações ou grupos.
+    """
+    result = crud.get_available_filters(db)
+    if tipo == 'insumo':
+        result.pop('grupos', None)
+    elif tipo == 'composicao':
+        result.pop('classificacoes', None)
+    return result
+
 # --- Endpoints de Administração ---
 
-@app.post("/admin/populate-database", status_code=202, tags=["Admin"])
-def trigger_database_population(year: int = Body(..., example=2025), month: int = Body(..., example=9)):
+@app.post("/api/v1/admin/populate-database", status_code=202, tags=["Admin"])
+def trigger_database_population(
+    year: int = Body(..., example=2025), 
+    month: int = Body(..., example=9),
+    state: str = Body("SP", example="SP", min_length=2, max_length=2)
+):
     """
-    Dispara a tarefa de download e população da base SINAPI para um mês/ano.
-    A tarefa roda em segundo plano (assíncrona).
+    Dispara a tarefa de download e população da base SINAPI para um mês/ano/UF.
+    A tarefa roda em segundo plano. Implementa trava (lock) para evitar duplicações.
     """
-    db_config = {
-        "host": os.getenv("POSTGRES_HOST", "db"),
-        "port": os.getenv("POSTGRES_PORT", 5432),
-        "database": os.getenv("POSTGRES_DB"),
-        "user": os.getenv("POSTGRES_USER"),
-        "password": os.getenv("POSTGRES_PASSWORD"),
-    }
-    sinapi_config = { "year": year, "month": month }
+    sandbox = is_sandbox_mode()
+    lock_key = f"lock:autosinapi:populate:{year}:{month:02d}:{state.upper()}:{'sandbox' if sandbox else 'prod'}"
 
-    task = populate_sinapi_task.delay(db_config, sinapi_config)
-    return {"message": "Tarefa de população da base de dados iniciada com sucesso.", "task_id": task.id}
+    if not redis_client.set(lock_key, "active", nx=True, ex=3600):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Já existe uma tarefa em andamento para {state.upper()} {month:02d}/{year}."
+        )
+
+    db_config = {
+        "host": os.getenv("POSTGRES_NAME", "autosinapi_db"),
+        "port": 5432,
+        "database": os.getenv("POSTGRES_DB", "sinapi"),
+        "user": os.getenv("POSTGRES_USER", "admin"),
+        "password": os.getenv("POSTGRES_PASSWORD", "admin"),
+    }
+    sinapi_config = { 
+        "year": year, 
+        "month": month, 
+        "state": state.upper(),
+        "type": "REFERENCIA"
+    }
+
+    try:
+        task = populate_sinapi_task.delay(db_config, sinapi_config)
+        redis_client.set(f"task:{lock_key}", task.id, ex=86400)
+        return {
+            "message": "Tarefa de população da base de dados iniciada com sucesso.",
+            "task_id": task.id,
+            "sandbox": sandbox
+        }
+    except Exception as e:
+        redis_client.delete(lock_key)
+        raise HTTPException(status_code=500, detail=f"Falha ao enfileirar tarefa: {str(e)}")
+
+@app.get("/api/v1/admin/tasks/{task_id}", tags=["Admin"])
+def get_task_status(task_id: str):
+    """Verifica o status e resultado de uma tarefa Celery."""
+    result = AsyncResult(task_id, app=populate_sinapi_task.app)
+    return {
+        "task_id": task_id,
+        "status": result.status,
+        "ready": result.ready(),
+        "result": str(result.result) if result.ready() else None
+    }
+
 
 
 @app.get("/", tags=["Root"])
@@ -55,7 +205,7 @@ def read_root():
 
 # --- Endpoints de Insumos ---
 
-@app.get("/insumos/{codigo}", response_model=schemas.Insumo, tags=["Insumos"])
+@app.get("/api/v1/public/insumos/{codigo}", response_model=schemas.Insumo, tags=["Insumos"])
 def read_insumo_by_codigo(
     codigo: int,
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
@@ -71,24 +221,26 @@ def read_insumo_by_codigo(
         raise HTTPException(status_code=404, detail="Insumo não encontrado para os filtros especificados.")
     return db_insumo
 
-@app.get("/insumos/", response_model=List[schemas.Insumo], tags=["Insumos"])
+@app.get("/api/v1/public/insumos", response_model=List[schemas.Insumo], tags=["Insumos"])
 def search_insumos(
     q: str = Query(..., min_length=3, description="Termo para buscar na descrição do insumo."),
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
     data_referencia: str = Query(..., description="Data de referência no formato AAAA-MM. Ex: 2025-09"),
     regime: str = Query("NAO_DESONERADO", description="Regime de preço."),
+    classificacao: str = Query(None, description="Filtrar por classificação do insumo. Ex: AGREGADOS, ACO, CONCRETO"),
     skip: int = 0, limit: int = 100, db: Session = Depends(get_db)
 ):
     """
     Busca insumos pela descrição e retorna seus preços para um determinado contexto.
+    Opcionalmente filtra por classificação.
     """
-    insumos = crud.search_insumos_by_descricao(db, q=q, uf=uf, data_referencia=data_referencia, regime=regime, skip=skip, limit=limit)
+    insumos = crud.search_insumos_by_descricao(db, q=q, uf=uf, data_referencia=data_referencia, regime=regime, skip=skip, limit=limit, classificacao=classificacao)
     return insumos
 
 
 # --- Endpoints de Composições ---
 
-@app.get("/composicoes/{codigo}", response_model=schemas.Composicao, tags=["Composições"])
+@app.get("/api/v1/public/composicoes/{codigo}", response_model=schemas.Composicao, tags=["Composições"])
 def read_composicao_by_codigo(
     codigo: int,
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
@@ -104,24 +256,26 @@ def read_composicao_by_codigo(
         raise HTTPException(status_code=404, detail="Composição não encontrada para os filtros especificados.")
     return db_composicao
 
-@app.get("/composicoes/", response_model=List[schemas.Composicao], tags=["Composições"])
+@app.get("/api/v1/public/composicoes", response_model=List[schemas.Composicao], tags=["Composições"])
 def search_composicoes(
     q: str = Query(..., min_length=3, description="Termo para buscar na descrição da composição."),
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
     data_referencia: str = Query(..., description="Data de referência no formato AAAA-MM. Ex: 2025-09"),
     regime: str = Query("NAO_DESONERADO", description="Regime de custo."),
+    grupo: str = Query(None, description="Filtrar por grupo da composição. Ex: SERVICOS, ESTRUTURA, INSTALACOES"),
     skip: int = 0, limit: int = 100, db: Session = Depends(get_db)
 ):
     """
     Busca composições pela descrição e retorna seus custos para um determinado contexto.
+    Opcionalmente filtra por grupo.
     """
-    composicoes = crud.search_composicoes_by_descricao(db, q=q, uf=uf, data_referencia=data_referencia, regime=regime, skip=skip, limit=limit)
+    composicoes = crud.search_composicoes_by_descricao(db, q=q, uf=uf, data_referencia=data_referencia, regime=regime, skip=skip, limit=limit, grupo=grupo)
     return composicoes
 
 
 # --- Endpoints de Business Intelligence (BI) ---
 
-@app.get("/bi/composicao/{codigo}/bom", response_model=List[schemas.ComposicaoBOMItem], tags=["Business Intelligence"])
+@app.get("/api/v1/public/bi/composicao/{codigo}/bom", response_model=List[schemas.ComposicaoBOMItem], tags=["Business Intelligence"])
 def get_composition_bom(
     codigo: int,
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
@@ -138,18 +292,22 @@ def get_composition_bom(
         raise HTTPException(status_code=404, detail="Composição não encontrada ou sem estrutura para os filtros especificados.")
     return bom_items
 
-@app.get("/bi/composicao/{codigo}/hora-homem", response_model=schemas.ComposicaoManHours, tags=["Business Intelligence"])
+@app.get("/api/v1/public/bi/composicao/{codigo}/hora-homem", response_model=schemas.ComposicaoManHours, tags=["Business Intelligence"])
 def get_composition_man_hours(codigo: int, db: Session = Depends(get_db)):
     """
     Calcula o total de Hora/Homem para uma composição, somando os coeficientes
     de todos os insumos de mão de obra (unidade 'H') em todos os níveis.
     """
     result = crud.get_composicao_man_hours(db, codigo=codigo)
-    if result is None or result.total_hora_homem is None:
-        return schemas.ComposicaoManHours(total_hora_homem=0.0)
-    return result
+    total_hh = 0.0
+    if result is not None:
+        if isinstance(result, dict):
+            total_hh = result.get('total_hora_homem') or 0.0
+        else:
+            total_hh = getattr(result, 'total_hora_homem', None) or 0.0
+    return schemas.ComposicaoManHours(total_hora_homem=total_hh)
 
-@app.post("/bi/curva-abc", response_model=List[schemas.CurvaABCItem], tags=["Business Intelligence"])
+@app.post("/api/v1/public/bi/curva-abc", response_model=List[schemas.CurvaABCItem], tags=["Business Intelligence"])
 def get_abc_curve(
     codigos: List[int] = Body(..., description="Lista de códigos de composições a serem analisadas.", example=[92711, 88307]),
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
@@ -166,7 +324,7 @@ def get_abc_curve(
         raise HTTPException(status_code=404, detail="Nenhum insumo encontrado para as composições e filtros especificados.")
     return abc_curve
 
-@app.get("/bi/composicao/{codigo}/otimizar", response_model=List[schemas.ComposicaoBOMItem], tags=["Business Intelligence"])
+@app.get("/api/v1/public/bi/composicao/{codigo}/otimizar", response_model=List[schemas.ComposicaoBOMItem], tags=["Business Intelligence"])
 def get_optimization_candidates(
     codigo: int,
     uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
@@ -183,7 +341,7 @@ def get_optimization_candidates(
         raise HTTPException(status_code=404, detail="Não foi possível calcular os candidatos para otimização.")
     return candidates
 
-@app.get("/bi/item/{tipo_item}/{codigo}/historico", response_model=List[schemas.HistoricoCusto], tags=["Business Intelligence"])
+@app.get("/api/v1/public/bi/item/{tipo_item}/{codigo}/historico", response_model=List[schemas.HistoricoCusto], tags=["Business Intelligence"])
 def get_item_cost_history(
     tipo_item: str = Path(..., description="Tipo do item: 'insumo' ou 'composicao'"),
     codigo: int = Path(..., description="Código do item."),
@@ -214,3 +372,135 @@ def get_item_cost_history(
     if not history:
         raise HTTPException(status_code=404, detail="Não foram encontrados dados históricos para o item e filtros especificados.")
     return history
+
+@app.get("/api/v1/public/bi/item/{tipo_item}/{codigo}/manutencoes", response_model=List[schemas.HistoricoManutencao], tags=["Business Intelligence"])
+def get_item_maintenance_history(
+    tipo_item: str = Path(..., description="Tipo do item: 'insumo' ou 'composicao'"),
+    codigo: int = Path(..., description="Código do item."),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna o histórico de manutenção (ativações/desativações) de um item.
+    """
+    if tipo_item not in ['insumo', 'composicao']:
+        raise HTTPException(status_code=400, detail="Tipo de item inválido. Use 'insumo' ou 'composicao'.")
+    manutencoes = crud.get_manutencoes_historico(db, codigo=codigo, tipo_item=tipo_item)
+    if not manutencoes:
+        raise HTTPException(status_code=404, detail="Nenhum histórico de manutenção encontrado para este item.")
+    return manutencoes
+
+
+@app.get("/api/v1/public/bi/audit/{tipo_item}/{codigo}", response_model=List[schemas.AuditEvent], tags=["Business Intelligence"])
+def get_audit_trail(
+    tipo_item: str = Path(..., description="Tipo do item: 'insumo' ou 'composicao'"),
+    codigo: int = Path(..., description="Código do item."),
+    data_referencia: str = Query(None, description="Filtrar por data de referência (AAAA-MM)."),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna o histórico completo de auditoria para um item.
+    Inclui retificações de preços, mudanças de status e modificações de estrutura.
+    """
+    if tipo_item not in ['insumo', 'composicao']:
+        raise HTTPException(status_code=400, detail="Tipo de item inválido. Use 'insumo' ou 'composicao'.")
+    audit_events = crud.get_audit_events(db, tipo_item=tipo_item, codigo=codigo, data_referencia=data_referencia)
+    if not audit_events:
+        raise HTTPException(status_code=404, detail="Nenhum evento de auditoria encontrado para este item.")
+    return audit_events
+
+@app.post("/api/v1/public/bi/curva-abc/por-classificacao", response_model=List[schemas.AbcPorClassificacao], tags=["Business Intelligence"])
+def get_abc_by_classificacao(
+    codigos: List[int] = Body(..., description="Lista de códigos de composições a serem analisadas.", example=[92711, 88307]),
+    uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
+    data_referencia: str = Query(..., description="Data de referência no formato AAAA-MM. Ex: 2025-09"),
+    regime: str = Query("NAO_DESONERADO", description="Regime de preço."),
+    db: Session = Depends(get_db)
+):
+    """
+    Calcula a Curva ABC agrupada por classificação de insumo,
+    agregando todos os insumos de mesma categoria para mostrar
+    quais classes de materiais dominam o custo.
+    """
+    result = crud.get_abc_by_classificacao(db, codigos=codigos, uf=uf, data_referencia=data_referencia, regime=regime)
+    if not result:
+        raise HTTPException(status_code=404, detail="Nenhuma classificação encontrada para as composições e filtros especificados.")
+    return result
+
+@app.get("/api/v1/public/bi/tendencias/por-classificacao", response_model=List[schemas.TendenciaClassificacao], tags=["Business Intelligence"])
+def get_tendencias_classificacao(
+    uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
+    data_referencia: str = Query(..., description="Data de referência final no formato AAAA-MM. Ex: 2025-09"),
+    regime: str = Query("NAO_DESONERADO", description="Regime de preço."),
+    agrupar_por: str = Query("classificacao", description="Campo para agrupamento: 'classificacao' (Insumos), 'grupo' (Composições) ou 'item' (Itens individuais)."),
+    codigos: Optional[str] = Query(None, description="Lista de códigos separados por vírgula para filtrar itens específicos."),
+    meses: int = Query(12, description="Número de meses a serem analisados para trás."),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna a evolução mensal do preço/custo médio agrupado por classificação de insumo,
+    grupo de composição ou item individual para análise de tendências e volatilidade.
+    """
+    code_list = None
+    if codigos:
+        try:
+            code_list = [int(c.strip()) for c in codigos.split(",") if c.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="O parâmetro 'codigos' deve conter apenas números separados por vírgula.")
+
+    result = crud.get_tendencias(db, uf=uf, regime=regime, data_referencia=data_referencia, agrupar_por=agrupar_por, meses=meses, codigos=code_list)
+    if not result:
+        raise HTTPException(status_code=404, detail="Nenhum dado de tendência encontrado para os filtros especificados.")
+    return result
+
+@app.get("/api/v1/public/bi/item/{tipo_item}/{codigo}/precos-uf", response_model=List[schemas.PrecoPorUF], tags=["Business Intelligence"])
+def get_item_prices_all_ufs(
+    tipo_item: str = Path(..., description="Tipo do item: 'insumo' ou 'composicao'"),
+    codigo: int = Path(..., description="Código do item."),
+    data_referencia: str = Query(..., description="Data de referência no formato AAAA-MM. Ex: 2025-09"),
+    regime: str = Query("NAO_DESONERADO", description="Regime de custo/preço."),
+    db: Session = Depends(get_db)
+):
+    """
+    Retorna o preço de um item em TODAS as UFs disponíveis para
+    comparação regional completa e mapa de calor.
+    """
+    if tipo_item not in ['insumo', 'composicao']:
+        raise HTTPException(status_code=400, detail="Tipo de item inválido. Use 'insumo' ou 'composicao'.")
+    precos = crud.get_precos_all_ufs(db, tipo_item=tipo_item, codigo=codigo, data_referencia=data_referencia, regime=regime)
+    if not precos:
+        raise HTTPException(status_code=404, detail="Nenhum dado encontrado para o item e filtros especificados.")
+    return precos
+
+@app.get("/api/v1/public/bi/composicao/{codigo}/produtividade", response_model=schemas.ComposicaoProdutividade, tags=["Business Intelligence"])
+def get_composition_productivity(
+    codigo: int,
+    uf: str = Query(..., description="Unidade Federativa (UF). Ex: SP", min_length=2, max_length=2),
+    data_referencia: str = Query(..., description="Data de referência no formato AAAA-MM. Ex: 2025-09"),
+    regime: str = Query("NAO_DESONERADO", description="Regime de custo/preço."),
+    db: Session = Depends(get_db)
+):
+    """
+    Classifica os itens do BOM de uma composição em Mão de Obra, Material e Equipamento,
+    retornando o total de Horas-Homem e o custo por HH como métrica de produtividade.
+    """
+    result = crud.get_composicao_produtividade(db, codigo=codigo, uf=uf, data_referencia=data_referencia, regime=regime)
+    if not result:
+        raise HTTPException(status_code=404, detail="Não foi possível calcular a produtividade para esta composição.")
+    return result
+
+@app.get("/api/v1/public/bi/insumo/{codigo}/onde-usado", response_model=List[schemas.InsumoOndeUsado], tags=["Business Intelligence"])
+def get_insumo_where_used(
+    codigo: int,
+    tipo_item: str = Query("insumo", description="Tipo do item: 'insumo' ou 'composicao'"),
+    db: Session = Depends(get_db)
+):
+    """
+    Query reversa: encontra todas as composições (em qualquer nível) que utilizam
+    um determinado insumo ou subcomposição. Útil para análise de impacto.
+    """
+    if tipo_item not in ['insumo', 'composicao']:
+        raise HTTPException(status_code=400, detail="Tipo de item inválido. Use 'insumo' ou 'composicao'.")
+    result = crud.get_onde_usado(db, codigo=codigo, tipo_item=tipo_item)
+    if not result:
+        raise HTTPException(status_code=404, detail="Nenhuma composição encontrada que utilize este item.")
+    return result

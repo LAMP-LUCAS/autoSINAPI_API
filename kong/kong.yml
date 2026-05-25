@@ -9,14 +9,48 @@ services:
   - name: sinapi-route
     paths:
     - /
+    plugins:
+    - name: key-auth
+      config:
+        key_names:
+        - X-API-KEY
+    - name: rate-limiting
+      config:
+        minute: 30
+        day: 250
+        policy: local
 
-  plugins:
-  - name: key-auth
-    config: 
-      key_names:
-      - X-API-KEY
-  - name: rate-limiting
-    config:
-      minute: 30
-      day: 250
-      policy: local
+  - name: public-demo-route
+    paths:
+    - /api/v1/public
+    methods:
+    - GET
+    - POST
+    - OPTIONS
+    strip_path: false
+    plugins:
+    - name: rate-limiting
+      config:
+        minute: 15
+        hour: 300
+        policy: local
+    - name: cors
+      config:
+        origins: ["*"]
+        methods: ["GET", "POST", "OPTIONS"]
+        headers: ["Accept", "Content-Type", "X-API-KEY"]
+        exposed_headers: ["X-RateLimit-Remaining"]
+        max_age: 3600
+
+  - name: demo-landing-page
+    paths:
+    - /demo
+    strip_path: false
+    plugins:
+    - name: cors
+      config:
+        origins: ["*"]
+        methods: ["GET", "OPTIONS"]
+        headers: ["Accept", "Content-Type", "X-API-KEY"]
+        exposed_headers: ["X-RateLimit-Remaining"]
+        max_age: 3600

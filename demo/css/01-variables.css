@@ -1,0 +1,147 @@
+/* ========================================
+   AutoSINAPI Demo - CSS
+   Mobile-first, Dark Mode, Full Responsive
+   ======================================== */
+
+:root {
+    /* Core Colors */
+    --primary: #2563eb;
+    --primary-dark: #1e40af;
+    --primary-light: #eff6ff;
+    --primary-glow: rgba(37, 99, 235, 0.15);
+    --secondary: #475569;
+    --secondary-light: #94a3b8;
+    --bg-main: #f8fafc;
+    --bg-alt: #f1f5f9;
+    --bg-card: #ffffff;
+    --bg-input: #f8fafc;
+    --bg-hover: #f1f5f9;
+    --text-main: #0f172a;
+    --text-secondary: #334155;
+    --text-muted: #64748b;
+    --text-inverse: #ffffff;
+    --border: #e2e8f0;
+    --success: #10b981;
+    --success-light: #ecfdf5;
+    --warning: #f59e0b;
+    --warning-light: #fffbeb;
+    --error: #ef4444;
+    --error-light: #fef2f2;
+
+    /* Tag Colors */
+    --tag-insumo-bg: #e0f2fe;
+    --tag-insumo-text: #0369a1;
+    --tag-comp-bg: #fef3c7;
+    --tag-comp-text: #92400e;
+    --tag-a-bg: #dcfce7;
+    --tag-a-text: #166534;
+    --tag-b-bg: #fef9c3;
+    --tag-b-text: #854d0e;
+    --tag-c-bg: #fee2e2;
+    --tag-c-text: #991b1b;
+
+    /* Layout */
+    --nav-height: 64px;
+    --container-max: 1400px;
+
+    /* Spacing Scale */
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 1rem;
+    --space-lg: 1.5rem;
+    --space-xl: 2rem;
+    --space-2xl: 3rem;
+    --space-3xl: 4rem;
+    --space-4xl: 6rem;
+
+    /* Typography Scale with clamp() */
+    --text-xs:   clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
+    --text-sm:   clamp(0.8rem, 0.75rem + 0.25vw, 0.9rem);
+    --text-base: clamp(0.875rem, 0.85rem + 0.25vw, 1rem);
+    --text-md:   clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+    --text-lg:   clamp(1.125rem, 1rem + 0.5vw, 1.25rem);
+    --text-xl:   clamp(1.25rem, 1.1rem + 0.75vw, 1.5rem);
+    --text-2xl:  clamp(1.5rem, 1.2rem + 1.5vw, 2rem);
+    --text-3xl:  clamp(1.875rem, 1.4rem + 2.5vw, 2.5rem);
+    --text-4xl:  clamp(2.25rem, 1.5rem + 3.75vw, 3.5rem);
+
+    /* Border Radius Scale */
+    --radius-xs: 4px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-2xl: 24px;
+    --radius-3xl: 32px;
+    --radius-full: 9999px;
+
+    /* Shadow Scale */
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07);
+    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08);
+    --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.1);
+    --shadow-2xl: 0 25px 50px -12px rgba(0,0,0,0.25);
+    --shadow-inner: inset 0 2px 4px rgba(0,0,0,0.04);
+
+    /* Transition Timing */
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    --ease-in: cubic-bezier(0.4, 0, 1, 1);
+    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-bounce: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    --duration-instant: 50ms;
+    --duration-fast: 150ms;
+    --duration-normal: 250ms;
+    --duration-slow: 350ms;
+    --duration-slower: 500ms;
+    --transition-fast: var(--duration-fast) var(--ease-out);
+    --transition-slow: var(--duration-slow) var(--ease-out);
+
+    /* Z-Index Scale */
+    --z-base: 0;
+    --z-dropdown: 100;
+    --z-sticky: 200;
+    --z-overlay: 300;
+    --z-modal: 400;
+    --z-toast: 500;
+    --z-skip: 600;
+}
+
+[data-theme="dark"] {
+    --primary: #3b82f6;
+    --primary-dark: #60a5fa;
+    --primary-light: #1e3a5f;
+    --primary-glow: rgba(59,130,246,0.25);
+    --secondary: #94a3b8;
+    --secondary-light: #64748b;
+    --bg-main: #0f172a;
+    --bg-alt: #1e293b;
+    --bg-card: #1e293b;
+    --bg-input: #334155;
+    --bg-hover: #334155;
+    --text-main: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --text-inverse: #0f172a;
+    --border: #334155;
+    --success-light: #064e3b;
+    --warning-light: #451a03;
+    --error-light: #450a0a;
+    --tag-insumo-bg: #0c4a6e;
+    --tag-insumo-text: #7dd3fc;
+    --tag-comp-bg: #713f12;
+    --tag-comp-text: #fde68a;
+    --tag-a-bg: #14532d;
+    --tag-a-text: #86efac;
+    --tag-b-bg: #713f12;
+    --tag-b-text: #fde047;
+    --tag-c-bg: #7f1d1d;
+    --tag-c-text: #fca5a5;
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.2);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.4);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.4);
+    --shadow-xl: 0 20px 25px rgba(0,0,0,0.5);
+    --shadow-2xl: 0 25px 50px rgba(0,0,0,0.7);
+}
+

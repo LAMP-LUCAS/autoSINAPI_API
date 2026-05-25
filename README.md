@@ -28,10 +28,14 @@ Se você trabalha com orçamentos de obra, sabe o quão repetitivo e frustrante 
 
 Tenha sua própria instância da API, com banco de dados e toda a infraestrutura, rodando localmente com apenas 5 passos.
 
-1.  **Clone o Repositório**
+1.  **Clone o Repositório (com Submódulos)**
     ```bash
-    git clone https://github.com/LAMP-LUCAS/autoSINAPI_API.git
+    git clone --recursive https://github.com/LAMP-LUCAS/autoSINAPI_API.git
     cd autoSINAPI_API
+    ```
+    *Caso já tenha clonado sem o `--recursive`, execute:*
+    ```bash
+    git submodule update --init --recursive
     ```
 
 2.  **Configure o Ambiente**
@@ -98,9 +102,34 @@ Use estes comandos para gerenciar seu ambiente facilmente.
 A autoSINAPI API vai além de simples consultas. Oferecemos endpoints de BI que entregam análises valiosas:
 
 -   **Estrutura Analítica (BOM):** Exploda uma composição em sua árvore completa de custos.
+-   **Hora/Homem Total:** Calcule o total de horas de mão de obra em qualquer composição.
+-   **Otimizador de Custo:** Identifique os 5 maiores vilões de custo em qualquer serviço.
 -   **Curva ABC:** Envie seu orçamento e descubra quais insumos representam 80% do seu custo.
--   **Otimizador de Custo:** Identifique os maiores vilões de custo em qualquer serviço.
--   **Série Histórica:** Analise a "inflação" de um insumo ou composição ao longo do tempo.
+-   **Tendências de Volatilidade:** Analise a inflação setorial agrupada por **Classificação (Insumos)** ou **Grupo (Composições)**, ou monitore a evolução de **Itens Específicos** ao longo de 12 meses.
+-   **Série Histórica:** Evolução mensal de preços para um item individual.
+-   **Comparativo Regional:** Compare preços de um mesmo item em diferentes estados do Brasil.
+
+### 🖥️ Frontend Demo
+
+O repositório inclui uma **aplicação web demo** completa em `demo/`. Explore todos os recursos da API visualmente:
+
+```bash
+# A demo roda automaticamente no ambiente Docker
+# Acesse: https://autosinapi.lamp.local/demo/
+
+# Ou localmente com servidor HTTP simples
+cd demo && python3 -m http.server 8080
+```
+
+**Recursos do Frontend:**
+- **Pesquisa Inteligente:** Busca textual com filtros por estado, data e regime
+- **BOM Tree:** Visualização hierárquica em cards ou tabela com scroll infinito
+- **Curva ABC:** Gráfico dinâmico (barras + linha) com tabela analítica
+- **Comparativo Regional:** Gráfico de barras com destaque de min/max e estatísticas
+- **Modal de Detalhes:** Histórico de preços (Chart.js), mão de obra, otimização
+- **Totalmente responsivo:** 320px (smartwatch) → 3840px (8K)
+- **Dark/Light mode:** com detecção automática do sistema + toggle explícito
+- **Acessível:** WCAG 2.1 AA, navegação por teclado, high contrast mode
 
 ---
 

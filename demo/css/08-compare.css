@@ -1,0 +1,190 @@
+/* ========== COMPARE STATS ========== */
+.compare-item-name {
+    text-align: center;
+    font-size: clamp(1.1rem, 2vw, 1.5rem);
+    font-weight: 800;
+    color: var(--text-main);
+    margin-bottom: 1.5rem;
+    animation: slideUp 0.5s ease-out;
+}
+.compare-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+.compare-stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    transition: all var(--transition-fast);
+    position: relative;
+    overflow: hidden;
+}
+.compare-stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 0.1875rem;
+    background: linear-gradient(90deg, var(--primary), var(--success));
+    transform: scaleX(0);
+    transition: transform var(--transition-slow);
+}
+.compare-stat-card:hover::before {
+    transform: scaleX(1);
+}
+.compare-stat-card:hover {
+    border-color: var(--primary);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+.compare-stat-label {
+    font-size: var(--text-xs);
+    font-weight: 800;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.compare-stat-value {
+    font-size: clamp(1.1rem, 2vw, 1.5rem);
+    font-weight: 900;
+    color: var(--primary);
+    font-variant-numeric: tabular-nums;
+    transition: color var(--transition-fast);
+}
+.compare-stat-card:hover .compare-stat-value {
+    color: var(--primary-dark);
+}
+[data-theme="dark"] .compare-stat-card:hover .compare-stat-value {
+    color: #93c5fd;
+}
+.compare-stat-uf {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    font-weight: 600;
+}
+.compare-chart-container {
+    height: auto;
+    aspect-ratio: 16 / 10;
+    min-height: 300px;
+}
+
+/* ========== STATE SELECTOR ========== */
+.state-selector {
+    margin-top: 1.5rem;
+    animation: fadeIn 0.3s ease-out;
+}
+.state-selector-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.state-selector-header label {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-main);
+}
+.state-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.btn-state-action {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 0.3rem 0.6rem;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    font-family: inherit;
+    min-height: 44px;
+    min-width: 44px;
+}
+.btn-state-action:hover {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+    transform: translateY(-1px);
+}
+.btn-state-action:active {
+    transform: translateY(0);
+}
+.state-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    max-height: clamp(120px, 25vh, 200px);
+    overflow-y: auto;
+    padding: 0.75rem;
+    background: var(--bg-alt);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    transition: border-color var(--transition-fast);
+    scrollbar-gutter: stable both-edges;
+}
+.state-chips:hover {
+    border-color: var(--primary);
+}
+.state-chip {
+    padding: 0.4rem 0.75rem;
+    border-radius: var(--radius-full);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    cursor: pointer;
+    border: 2px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    transition: all var(--transition-fast);
+    font-family: inherit;
+    user-select: none;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.state-chip:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: translateY(-1px);
+}
+.state-chip:active {
+    transform: translateY(0);
+}
+.state-chip.selected {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+    box-shadow: 0 2px 8px var(--primary-glow);
+}
+.state-chip.selected:hover {
+    background: var(--primary-dark);
+    border-color: var(--primary-dark);
+}
+[data-theme="dark"] .state-chip.selected {
+    background: #3b82f6;
+    border-color: #3b82f6;
+}
+[data-theme="dark"] .state-chip.selected:hover {
+    background: #2563eb;
+    border-color: #2563eb;
+}
+.state-selector-footer {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+

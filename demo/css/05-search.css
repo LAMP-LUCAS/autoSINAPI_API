@@ -1,0 +1,127 @@
+/* ========== SEARCH BOX ========== */
+.search-box, .abc-input-box, .compare-input-box {
+    background: var(--bg-card);
+    padding: clamp(1.5rem, 4vw, 2.5rem);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    margin-bottom: 3rem;
+    border: 1px solid var(--border);
+    transition: background var(--transition-slow), border-color var(--transition-slow);
+    position: relative;
+    z-index: 10;
+}
+
+.search-bar-row {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    position: relative;
+    z-index: 20;
+}
+
+.input-wrapper {
+    flex: 1;
+    min-width: 200px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    z-index: 30;
+}
+.input-icon {
+    position: absolute;
+    left: 1.25rem;
+    color: var(--text-muted);
+    pointer-events: none;
+    z-index: 1;
+}
+.search-bar-row input {
+    width: 100%;
+    padding: 1.25rem 1.5rem 1.25rem 3.5rem;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: clamp(1rem, 1.5vw, 1.1rem);
+    outline: none;
+    transition: all var(--transition-fast);
+    background: var(--bg-input);
+    color: var(--text-main);
+    font-family: inherit;
+    position: relative;
+    z-index: 40;
+}
+.search-bar-row input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px var(--primary-glow);
+    background: var(--bg-card);
+}
+
+.search-bar-row button[type="submit"],
+.search-bar-row button:not([type]) {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 1.25rem 2.5rem;
+    border-radius: var(--radius-md);
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    position: relative;
+    z-index: 40;
+    font-family: inherit;
+    min-height: 44px;
+}
+.search-bar-row button[type="submit"]:hover,
+.search-bar-row button:not([type]):hover {
+    background: var(--primary-dark);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+.search-bar-row button[type="submit"]:active,
+.search-bar-row button:not([type]):active {
+    transform: translateY(0);
+}
+
+.search-filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+    gap: 1.5rem;
+}
+
+.search-type-toggle {
+    display: flex;
+    background: var(--bg-alt);
+    padding: 0.25rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+
+.btn-search-type {
+    flex: 1;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-muted);
+    transition: all var(--transition-fast);
+    font-family: inherit;
+    min-height: 44px;
+}
+
+.btn-search-type.active {
+    background: var(--bg-card);
+    color: var(--primary);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-search-type:hover:not(.active) {
+    color: var(--text-main);
+}

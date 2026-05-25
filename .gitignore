@@ -60,6 +60,7 @@ env.bak
 venv.bak
 .manage-kong
 autosinapi_downloads/
+deploy.config
 
 # Docker
 .dockerignore
@@ -70,4 +71,8 @@ docker-compose.override.yml
 .vscode/
 
 # Model
-AutoSINAPI/
+# AutoSINAPI/  <-- Removed: ETL toolkit is part of the project
+
+# Logs
+logs/
+.pytest_cache/
