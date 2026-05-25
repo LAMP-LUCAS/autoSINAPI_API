@@ -76,3 +76,4 @@ docker-compose.override.yml
 # Logs
 logs/
 .pytest_cache/
+.drafts/
