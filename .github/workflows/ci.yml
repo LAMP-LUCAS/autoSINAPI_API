@@ -34,7 +34,7 @@ jobs:
       run: |
         echo "🧪 Executando teste de fumaça do ETL..."
         # Rodamos um comando simplificado apenas para verificar se o motor do Toolkit liga corretamente dentro do container da API
-        docker compose run --rm api python3 -c "from autosinapi.etl_pipeline import SinapiPipeline; print('✅ Toolkit importado com sucesso na API')"
+        docker compose run --rm api python3 -c "from autosinapi.etl_pipeline import PipelineETL; print('✅ Toolkit importado com sucesso na API')"
       
     - name: Cleanup
       if: always()
