@@ -219,14 +219,11 @@ class TestAuditLogFlow:
         mock_engine.connect.return_value.__enter__.return_value = mock_conn
 
         # Log audit event
-        db._log_audit_event(
-            table_name="insumos",
-            record_pk={"codigo": 1001},
-            operation="UPDATE",
-            old_values={"preco_mediano": 45.50},
-            new_values={"preco_mediano": 50.00},
-            sinapi_versao="2024.02",
-            motivo_manutencao="RETIFICACAO"
+        db.register_audit_log(
+            run_id="test-run-123",
+            data_ref="2024.01",
+            records=100,
+            tables=["insumos", "precos"]
         )
 
         # Verify INSERT was called

@@ -1,0 +1,35 @@
+# tests/Dockerfile.test
+# Imagem dedicada para testes de build e orquestração do AutoSINAPI
+
+FROM python:3.10-slim
+
+# Evita a criação de arquivos .pyc e garante logs em tempo real
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+WORKDIR /app
+
+# Instala dependências de sistema necessárias para build
+RUN apt-get update && apt-get install -y \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instala ferramentas de teste e build
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+    pytest \
+    pytest-mock \
+    pytest-cov \
+    build \
+    pandas \
+    sqlalchemy \
+    openpyxl \
+    requests \
+    tqdm \
+    pydantic-settings
+
+# Define o PYTHONPATH para incluir os scripts do projeto
+ENV PYTHONPATH="/app:/app/scripts:/app/AutoSINAPI"
+
+# O comando padrão roda a suíte de testes de deploy
+CMD ["pytest", "tests/test_deploy_orchestrator.py"]
