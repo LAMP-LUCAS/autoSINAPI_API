@@ -325,9 +325,18 @@ async def log_requests(request: Request, call_next):
     return response
 
 @app.get("/api/v1/public/health", tags=["tier_1", "Health"], summary="Verificar health check da API", response_description="Status do serviço, banco e Redis.", responses=_HEALTH_RESPONSES)
+@app.get("/api/v1/sinapi/health", tags=["tier_1", "Health"], include_in_schema=False)
 def health_check(db: Session = Depends(get_db)):
     """
     Health check endpoint. Retorna status do banco, Redis e versão da API.
+
+    Contrato canônico do ecossistema Mundoaec: `GET /api/v1/sinapi/health`
+    (alias do legado `/api/v1/public/health`).
+
+    Latência: `max_data_referencia` faz full scan (~400 ms) na tabela de preços
+    e dominava o tempo de resposta. Aqui ele é memoizado por `_HEALTH_TTL_S`
+    (janela curta), mantendo o health barato (< 300 ms) sem alterar o contrato
+    observável — o valor é exatamente o que `_get_max_data_referencia` retorna.
     """
     checks = {"status": "healthy",         "version": "0.4.0-beta.0", "timestamp": datetime.utcnow().isoformat() + "Z"}
 
@@ -346,11 +355,52 @@ def health_check(db: Session = Depends(get_db)):
         checks["status"] = "degraded"
 
     # B4.2: expõe a competência máxima consumida (YYYY-MM) para comparabilidade
-    # direta com a base disponível (ADR-034).
-    checks["max_data_referencia"] = _get_max_data_referencia(db)
+    # direta com a base disponível (ADR-034). Memoizado (TTL curto).
+    checks["max_data_referencia"] = _get_max_data_referencia_cached(db)
 
     status_code = 200 if checks["status"] == "healthy" else 503
     return JSONResponse(content=checks, status_code=status_code)
+
+
+_HEALTH_TTL_S = 30
+
+
+def _is_production_session(db: Session) -> bool:
+    """True quando a sessão pertence ao engine de produção (SessionLocal).
+
+    Testes injetam sessões fake via `dependency_overrides[get_db]`; para elas o
+    health NUNCA usa cache, garantindo que o valor reflita o DB do teste
+    (contrato observável de `max_data_referencia`).
+    """
+    try:
+        from .database import engine
+        return db.get_bind() is engine
+    except Exception:
+        return False
+
+
+def _get_max_data_referencia_cached(db: Session) -> Optional[str]:
+    """`_get_max_data_referencia` com memoização curta (evita full scan por request).
+
+    O cache só vale para o engine de produção; sessões de teste sempre consultam
+    o banco, preservando o contrato observável.
+    """
+    if not _is_production_session(db):
+        return _get_max_data_referencia(db)
+
+    now = time.time()
+    cached = _max_ref_cache["value"]
+    if cached is not None and (now - _max_ref_cache["at"]) < _HEALTH_TTL_S:
+        return cached["v"]
+
+    value = _get_max_data_referencia(db)
+    if value is not None:
+        _max_ref_cache["at"] = now
+        _max_ref_cache["value"] = {"v": value}
+    return value
+
+
+_max_ref_cache: dict = {"at": 0.0, "value": None}
 
 
 def _get_max_data_referencia(db: Session) -> Optional[str]:
