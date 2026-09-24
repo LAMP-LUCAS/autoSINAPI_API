@@ -9,20 +9,17 @@ import re
 import yaml
 from pathlib import Path
 
-CONFIG_PATH = os.getenv("LEGAL_CONFIG_PATH", "/app/config/legal_ssot.yaml")
-DOCS_DIR = os.getenv("LEGAL_DOCS_DIR", "/app/legal_docs")
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_PATH = Path(os.getenv("LEGAL_CONFIG_PATH", str(_REPO_ROOT / "config" / "legal_ssot.yaml")))
+DOCS_DIR = Path(os.getenv("LEGAL_DOCS_DIR", str(_REPO_ROOT / "legal_docs")))
 
 
 def load_legal_ssot() -> dict:
-    """Carrega o SSOT YAML com informações corporativas/legais."""
+    """Carrega o SSOT YAML versionado no repositório da API."""
     path = Path(CONFIG_PATH)
     if not path.exists():
-        fallback = Path(__file__).resolve().parent.parent.parent.parent / "stacks" / "autosinapi" / "config" / "legal_ssot.yaml"
-        if fallback.exists():
-            path = fallback
-        else:
-            return {"company": {}}
-    
+        return {"company": {}}
+
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {"company": {}}
 
@@ -53,10 +50,6 @@ def get_legal_document(doc_name: str) -> dict:
 
     filename = valid_docs[doc_name]
     doc_path = Path(DOCS_DIR) / filename
-    if not doc_path.exists():
-        fallback_dir = Path(__file__).resolve().parent.parent.parent.parent / "stacks" / "autosinapi" / "docs" / "legal"
-        doc_path = fallback_dir / filename
-
     if not doc_path.exists():
         raise FileNotFoundError(f"Arquivo do documento {filename} não encontrado.")
 

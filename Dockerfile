@@ -22,6 +22,10 @@ RUN apt-get update && \
 
 # Estágio 3: Cópia do código da aplicação
 COPY ./api /app/api
+# Documentos legais e SSOT usam o mesmo repositório da API; sem este passo
+# uma imagem de produção respondia 404 mesmo com o bind mount de código.
+COPY ./config /app/config
+COPY ./legal_docs /app/legal_docs
 
 # Estágio 4: Segurança e Execução
 RUN apt-get update && apt-get install -y wget procps util-linux gdb --no-install-recommends && \

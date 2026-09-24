@@ -50,7 +50,8 @@ jobs:
             tests/test_parameter_examples.py \
             tests/test_post_schemas.py \
             tests/test_tier_tags.py \
-            tests/test_portal.py -q"
+            tests/test_portal.py \
+            tests/test_legal.py -q"
 
     - name: Cleanup
       if: always()
