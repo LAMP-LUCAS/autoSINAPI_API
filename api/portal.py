@@ -14,6 +14,29 @@ from .schemas import _RATE_LIMIT_RESPONSE, _AUTH_RESPONSES
 
 router = APIRouter(tags=["tier_1", "Portal"])
 
+# Ordem fixa das claims do handoff SSO. Manter como constante evita que um
+# campo entre na asserção sem cobertura de teste — foi assim que um `jti` local
+# virou `row["jti"]` e derrubou o endpoint com 500 em 2026-09-25.
+SSO_CLAIM_FIELDS = ("email", "client_id", "subscription_id", "key_id", "key_prefix")
+
+
+def _build_sso_claims(row, jti: str, issued_at: int, expires_at: int) -> str:
+    """Serializa as claims do handoff: metadados + jti + validade.
+
+    Só entram os campos listados em SSO_CLAIM_FIELDS — nunca a raw key.
+    `key_prefix` nulo (linha legada) vira string vazia em vez de explodir.
+    """
+    parts = [
+        "" if row[name] is None else str(row[name])
+        for name in SSO_CLAIM_FIELDS
+    ]
+    parts.extend([str(jti), str(issued_at), str(expires_at)])
+    return "|".join(parts)
+
+
+def _sign_sso_claims(claims: str, secret: str) -> str:
+    return hmac.new(secret.encode(), claims.encode(), hashlib.sha256).hexdigest()
+
 
 @router.get(
     "/api/v1/public/portal/me",
@@ -172,10 +195,8 @@ def message_dispatcher_sso(
     ts = int(time.time())
     expires_at = ts + 300
     jti = secrets.token_urlsafe(16)
-    claims = "|".join(str(row[name]) for name in (
-        "email", "client_id", "subscription_id", "key_id", "key_prefix", "jti"
-    )) + f"|{ts}|{expires_at}"
-    signature = hmac.new(secret.encode(), claims.encode(), hashlib.sha256).hexdigest()
+    claims = _build_sso_claims(row, jti=jti, issued_at=ts, expires_at=expires_at)
+    signature = _sign_sso_claims(claims, secret)
 
     if response is not None:
         response.headers["Cache-Control"] = "no-store"
