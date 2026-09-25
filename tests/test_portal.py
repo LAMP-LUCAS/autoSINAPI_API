@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from api.main import app
-from api.database import get_db
+from api.database import get_saas_db
 from api.schemas import PortalResponse, PlanInfo, QuotaInfo, PortalLinks
 
 
@@ -38,9 +38,9 @@ class _FakeDB:
 @pytest.fixture
 def captured_db():
     db = _FakeDB()
-    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_saas_db] = lambda: db
     yield db
-    app.dependency_overrides.pop(get_db, None)
+    app.dependency_overrides.pop(get_saas_db, None)
 
 
 @pytest.fixture

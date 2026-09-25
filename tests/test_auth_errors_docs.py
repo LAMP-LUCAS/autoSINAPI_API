@@ -20,7 +20,7 @@ Estratégia (TDD / DDD):
 """
 import pytest
 from fastapi.testclient import TestClient
-from api.main import app, _AUTH_RESPONSES, _RATE_LIMIT_RESPONSE
+from api.main import app, _AUTH_RESPONSES, _RATE_LIMIT_RESPONSE, _normalize_mcp_public_url
 
 # SSOT canônico dos rate limits por plano (espelha stacks/autosinapi/kong/plans.yaml).
 # Mantido aqui apenas para validação de documentação; a API NÃO importa de `stacks/`.
@@ -72,6 +72,21 @@ class TestAuthErrorsDocs:
             assert limit in desc, (
                 f"Rate limit '{limit}' do plano '{plan}' não visível em info.description"
             )
+
+    def test_mcp_url_normalizer_accepts_base_or_sse_endpoint(self):
+        assert _normalize_mcp_public_url("https://mcp.example.test/") == "https://mcp.example.test"
+        assert _normalize_mcp_public_url("https://mcp.example.test/sse/") == "https://mcp.example.test"
+        assert _normalize_mcp_public_url("https://mcp.example.test/sse") == "https://mcp.example.test"
+
+    def test_public_contract_is_current_and_environment_driven(self, openapi):
+        desc = openapi.get("info", {}).get("description", "")
+        assert "60 req/min" in desc
+        assert "1.000 req/mês" in desc
+        assert "mcp.autosinapi.mundoaec.com" not in desc
+        assert "sinapi_search" in desc
+        assert "transporte MCP exige `X-API-KEY`" in desc
+        assert "modo anônimo" in desc
+        assert "PUBLIC_MCP_AUTOSINAPI_URL" in desc
 
     # ── Critério 3: Erros 401/402/429 documentados ──
     def test_error_codes_documented_in_description(self, openapi):

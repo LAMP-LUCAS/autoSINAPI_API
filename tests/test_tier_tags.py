@@ -25,6 +25,8 @@ class TestTierTags:
                 assert len(tags) >= 1, (
                     f"{method.upper()} {path}: no tags defined"
                 )
+                if tags[0] == "Admin":
+                    continue
                 assert tags[0].startswith("tier_"), (
                     f"{method.upper()} {path}: first tag '{tags[0]}' must start with 'tier_'"
                 )

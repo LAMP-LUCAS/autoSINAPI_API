@@ -44,6 +44,21 @@ beat_schedule = {
         "task": "api.tasks.rollup_consumption_hourly",
         "schedule": crontab(minute="*/10"),
     },
+    # --- Lifecycle: expiração de assinaturas (SR-GW-8) ---
+    # De hora em hora, marca assinaturas vencidas como 'expired' e registra
+    # auditoria/eventos. Idempotente.
+    "expire-stale-subscriptions": {
+        "task": "api.tasks.expire_stale_subscriptions",
+        "schedule": crontab(minute=5),
+    },
+    # --- Funil CRM: reconciliação lead -> cliente convertido ---
+    # A cada 10 minutos, marca o lead como 'converted' quando existe cliente
+    # com o mesmo e-mail e assinatura ativa. Idempotente; alimenta o KPI de
+    # conversão do funil (Funnel Metrics / dashboard).
+    "sync-lead-conversions": {
+        "task": "api.tasks.sync_lead_conversions",
+        "schedule": crontab(minute="*/10"),
+    },
 }
 
 # --- Limites de Concorrência e Sobrecarga ---

@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     # --- Configurações de Segurança ---
     ALLOWED_ORIGINS: str = "*"  # Lista separada por vírgula. Ex: "https://demo.lamp.local,http://localhost:8080"
 
+    # URL pública do servidor MCP, injetada pelo ambiente de deploy.
+    # Mantida opcional para desenvolvimento; nunca usar hostname legado no código.
+    MCP_PUBLIC_URL: str | None = None
+
     # --- Embeddings vetoriais (ADR-006 / STORY-SRC-004, Fase 4) ---
     # Provider primário: bge-m3 no Ollama do notebook (lampbook, via Tailscale).
     # Fallback: nomic-embed-text no Ollama local (server_ollama).

@@ -130,9 +130,9 @@ def rollup_consumption_hourly():
     futuro módulo interno de observabilidade/gestão/BI.
     """
     from .config import settings
-    from .database import SessionLocal
+    from .database import SaasSessionLocal
 
-    db = SessionLocal()
+    db = SaasSessionLocal()
     try:
         row = db.execute(text("""
             WITH agg AS (
@@ -190,6 +190,156 @@ def rollup_consumption_hourly():
     except Exception as exc:
         db.rollback()
         logger.error("rollup_consumption_hourly failed: %s", exc, exc_info=True)
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_exception(exc)
+        except ImportError:
+            pass
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(acks_late=True, max_retries=2, default_retry_delay=300)
+def expire_stale_subscriptions():
+    """Expira assinaturas cujo período já venceu (SR-GW-8 / lifecycle).
+
+    Varre saas.subscriptions com status='active' e current_period_end < now(),
+    marca como 'expired', registra em saas.expiration_events (audit/notificação)
+    e em saas.client_events. Idempotente: só afeta assinaturas ainda marcadas
+    como 'active'. Planos de acesso perpétuo (current_period_end ~ 2099) são
+    ignorados naturalmente pelo filtro temporal.
+
+    Roda no banco SaaS (api-gateway-db.saas) — o mesmo lido pelo gateway.
+    """
+    from .database import SaasSessionLocal
+
+    db = SaasSessionLocal()
+    try:
+        # Seleciona assinaturas a expirar (com dados para auditoria)
+        rows = db.execute(text("""
+            SELECT s.id, s.client_id, s.plan_id, s.current_period_end,
+                   p.slug AS plan_slug
+            FROM saas.subscriptions s
+            JOIN saas.plans p ON p.id = s.plan_id
+            WHERE s.status = 'active'
+              AND s.deleted_at IS NULL
+              AND s.current_period_end IS NOT NULL
+              AND s.current_period_end < NOW()
+        """)).mappings().all()
+
+        if not rows:
+            logger.info("expire_stale_subscriptions: nenhuma assinatura a expirar")
+            return {"status": "success", "expired": 0}
+
+        expired_count = 0
+        for r in rows:
+            claimed = db.execute(
+                text("""
+                    UPDATE saas.subscriptions
+                    SET status = 'expired', updated_at = NOW()
+                    WHERE id = :id AND status = 'active'
+                    RETURNING id
+                """),
+                {"id": r["id"]},
+            ).scalar_one_or_none()
+            if claimed is None:
+                # Another worker claimed the same subscription between the scan
+                # and this update; do not duplicate audit/events.
+                continue
+            expired_count += 1
+            db.execute(
+                text("""
+                    INSERT INTO saas.subscription_audit
+                        (subscription_id, client_id, action, plan_id,
+                         old_status, new_status, changed_at)
+                    VALUES (:sid, :cid, 'expired', :pid, 'active', 'expired', NOW())
+                """),
+                {"sid": r["id"], "cid": r["client_id"], "pid": r["plan_id"]},
+            )
+            db.execute(
+                text("""
+                    INSERT INTO saas.expiration_events
+                        (subscription_id, client_id, expired_at, details)
+                    VALUES (:sid, :cid, NOW(), :det)
+                """),
+                {
+                    "sid": r["id"],
+                    "cid": r["client_id"],
+                    "det": f'{{"plan": "{r["plan_slug"]}", "period_end": "{r["current_period_end"]}"}}',
+                },
+            )
+            db.execute(
+                text("""
+                    INSERT INTO saas.client_events
+                        (client_id, event_type, actor, details, occurred_at)
+                    VALUES (:cid, 'subscription_expired', 'system', :det, NOW())
+                """),
+                {
+                    "cid": r["client_id"],
+                    "det": f'{{"plan": "{r["plan_slug"]}", "reason": "period_elapsed"}}',
+                },
+            )
+
+        db.commit()
+        logger.info("expire_stale_subscriptions: %d assinatura(s) expirada(s)", expired_count)
+        return {"status": "success", "expired": expired_count}
+    except Exception as exc:
+        db.rollback()
+        logger.error("expire_stale_subscriptions failed: %s", exc, exc_info=True)
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_exception(exc)
+        except ImportError:
+            pass
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(acks_late=True, max_retries=2, default_retry_delay=300)
+def sync_lead_conversions():
+    """Reconcilia leads × clientes: marca lead como `converted` quando existe
+    cliente com o mesmo e-mail e uma assinatura ativa (funil → conversão real).
+
+    Fecha o ciclo lead→CRM de forma idempotente e independente da origem
+    (checkout MP, provision Free, concessão manual). Cobre o gap em que o
+    webhook `/webhook/lead-conversion` não tinha chamador: sem isto o funil
+    (e o relatório noturno de KPIs) mostrava sempre 0 conversões.
+
+    Escopo: apenas leads não deletados, não convertidos e não-teste.
+    """
+    from .database import SaasSessionLocal
+
+    db = SaasSessionLocal()
+    try:
+        rows = db.execute(text("""
+            UPDATE saas.leads l
+               SET status = 'converted',
+                   converted_at = NOW(),
+                   converted_to_user_id = c.id
+              FROM saas.clients c
+             WHERE lower(l.email) = lower(c.email)
+               AND l.status NOT IN ('converted', 'lost', 'rejected', 'cancelled', 'closed')
+               AND l.deleted_at IS NULL
+               AND COALESCE(l.is_test, FALSE) = FALSE
+               AND c.deleted_at IS NULL
+               AND COALESCE(c.is_test, FALSE) = FALSE
+               AND EXISTS (
+                   SELECT 1 FROM saas.subscriptions s
+                    WHERE s.client_id = c.id
+                      AND s.status = 'active'
+                      AND s.deleted_at IS NULL
+                      AND s.current_period_end > NOW()
+               )
+            RETURNING l.id
+        """)).fetchall()
+        db.commit()
+        logger.info("sync_lead_conversions: %d lead(s) convertido(s)", len(rows))
+        return {"status": "success", "converted": len(rows)}
+    except Exception as exc:
+        db.rollback()
+        logger.error("sync_lead_conversions failed: %s", exc, exc_info=True)
         try:
             import sentry_sdk
             sentry_sdk.capture_exception(exc)

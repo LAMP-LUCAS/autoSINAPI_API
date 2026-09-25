@@ -69,10 +69,14 @@ class TestSpecStructure:
 
 
 class TestTierTags:
-    def test_first_tag_is_tier(self, openapi):
+    def test_first_tag_is_tier_or_admin(self, openapi):
         for path, method, details in _iter_operations(openapi):
             tags = details.get("tags", [])
             assert len(tags) >= 1, f"{method.upper()} {path}: sem tags"
+            # Admin/CRM operations are not public catalog tiers; they retain
+            # their own explicit tag instead of being mislabeled as tier_1.
+            if tags[0] == "Admin":
+                continue
             assert TIER_RE.match(tags[0]), (
                 f"{method.upper()} {path}: primeira tag '{tags[0]}' "
                 f"deve casar ^tier_[123]$ (SPEC-RULE 1.1)"

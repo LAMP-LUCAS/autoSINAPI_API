@@ -32,5 +32,5 @@ Seguindo as metas de qualidade do banco de dados e recuperando as diretrizes ori
 
 ## 3. Segurança e Rate Limiting da API Mínima
 *   A API mínima (GPLv3) opera localmente sem paywalls comerciais.
-*   **Endpoints Públicos (Demo):** Operam sem necessidade de autenticação no FastAPI. O controle de cotas (rate limit de demonstração de 15 req/min e 300 req/hora) é configurado no gateway ou localmente no FastAPI para testes.
+*   **Endpoints Públicos (Demo):** Operam sem necessidade de autenticação no FastAPI. O controle de cotas (rate limit de demonstração de 60 req/min e 1.000 req/mês) é configurado no gateway; a API apenas documenta o contrato.
 *   **Sanitização de Input:** O parâmetro `?q=` nos endpoints de busca deve ser sanitizado para remover caracteres especiais antes de executar buscas textuais, evitando erros de sintaxe ou vulnerabilidades de SQL Injection.

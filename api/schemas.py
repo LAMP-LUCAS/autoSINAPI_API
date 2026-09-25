@@ -21,9 +21,9 @@ _AUTH_RESPONSES = {
     402: {"description": "Assinatura inativa ou expirada. Renove em https://autosinapi.mundoaec.com/checkout."},
     429: {"description": "Limite de requisições excedido (rate limit do plano ou demo)."},
 }
-# Apenas o erro de rate limit se aplica aos endpoints públicos (demo 15/min).
+# Apenas o erro de rate limit se aplica aos endpoints públicos (demo 60/min).
 _RATE_LIMIT_RESPONSE = {
-    429: {"description": "Limite de requisições excedido (demonstração: 15 req/min, 300 req/hour)."},
+    429: {"description": "Limite de requisições excedido (demonstração: 60 req/min, 1.000 req/mês)."},
 }
 # Erros levantados pelo próprio FastAPI (HTTPException) — SSOT reutilizada nos
 # endpoints que de fato os produzem (coesão/DRY, STORY-API-006).

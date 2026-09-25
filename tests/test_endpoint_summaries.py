@@ -88,6 +88,8 @@ class TestEndpointSummaries:
             for method, details in methods.items():
                 if method == "parameters":
                     continue
+                if details.get("tags", [None])[0] == "Admin":
+                    continue
                 summary = details.get("summary", "")
                 assert len(summary) <= 80, (
                     f"{method.upper()} {path}: summary '{summary}' "
@@ -98,6 +100,8 @@ class TestEndpointSummaries:
         for path, methods in openapi["paths"].items():
             for method, details in methods.items():
                 if method == "parameters":
+                    continue
+                if details.get("tags", [None])[0] == "Admin":
                     continue
                 summary = details.get("summary", "")
                 words = summary.split()

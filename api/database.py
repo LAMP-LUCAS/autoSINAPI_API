@@ -34,6 +34,20 @@ if not SQLALCHEMY_DATABASE_URL:
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# ── SaaS database (billing/subscriptions/coupons) ─────────────────────────────
+# The public API gateway (Kong + ssl-mp-adapter) owns the SaaS domain and reads
+# from its own PostgreSQL (`api-gateway-db`, database `saas`). The SINAPI data
+# DB (DATABASE_URL) is a separate concern. Never silently use the data DB in a
+# production process; local/test environments may opt into the legacy fallback.
+SQLALCHEMY_SAAS_DATABASE_URL = os.getenv("SAAS_DATABASE_URL")
+_RUNTIME_ENVIRONMENT = os.getenv("MP_ENVIRONMENT", os.getenv("ENVIRONMENT", "development")).lower()
+if not SQLALCHEMY_SAAS_DATABASE_URL and _RUNTIME_ENVIRONMENT in {"prod", "production"}:
+    raise RuntimeError("SAAS_DATABASE_URL must be configured in production")
+SQLALCHEMY_SAAS_DATABASE_URL = SQLALCHEMY_SAAS_DATABASE_URL or SQLALCHEMY_DATABASE_URL
+
+saas_engine = create_engine(SQLALCHEMY_SAAS_DATABASE_URL)
+SaasSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=saas_engine)
+
 def get_db():
     """
     Dependência do FastAPI que fornece uma sessão de banco de dados por requisição.
@@ -43,6 +57,19 @@ def get_db():
     chamado ao final, liberando a conexão de volta para o pool.
     """
     db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_saas_db():
+    """Sessão do banco SaaS (billing/assinaturas/cupons).
+
+    Usada pelos endpoints de administração e pelo worker de ciclo de vida, que
+    devem operar sobre o mesmo banco lido pelo gateway (api-gateway-db.saas).
+    """
+    db = SaasSessionLocal()
     try:
         yield db
     finally:

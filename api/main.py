@@ -45,10 +45,35 @@ from .tasks import populate_sinapi_task
 from .cache_utils import redis_client as cache_redis
 from .portal import router as portal_router
 from .legal_service import get_legal_document
+# ── Painel CMS/CRM (SPEC-006) — rotas admin protegidas por Bearer ──────────
+# Registro explícito: sem estes includes todas as rotas /api/v1/admin/*
+# respondem 404 e o login do SPA /admin falha (regressão 2026-09-23).
+from .admin_crm import router as admin_crm_router
+from .admin_messages import router as admin_messages_router
+from .admin_portal import router as admin_portal_router
 import threading
 
 # Carrega as configurações uma vez
 settings = config.settings
+
+def _normalize_mcp_public_url(value: str) -> str:
+    """Return an MCP origin/base URL without duplicating the /sse entrypoint."""
+    raw = str(value or "").strip().rstrip("/")
+    if raw.endswith("/sse"):
+        return raw[: -len("/sse")].rstrip("/")
+    return raw
+
+
+# URL pública do MCP vem do ambiente; o placeholder é seguro para dev/testes
+# e evita reintroduzir o hostname legado no OpenAPI.
+MCP_PUBLIC_URL = _normalize_mcp_public_url(
+    os.getenv("MCP_PUBLIC_URL")
+    or os.getenv("PUBLIC_MCP_AUTOSINAPI_URL")
+    or getattr(settings, "MCP_PUBLIC_URL", None)
+    or "PUBLIC_MCP_AUTOSINAPI_URL"
+)
+MCP_SSE_ENDPOINT = f"{MCP_PUBLIC_URL}/sse"
+API_VERSION = "0.4.1-beta.0"
 
 # Structured Logging
 class JSONLogFormatter(logging.Formatter):
@@ -83,7 +108,7 @@ logger = logging.getLogger("autosinapi.api")
 _AUTH_SECTION = (
     "## Autenticação\n"
     "Endpoints em `/api/v1/public/*` são públicos (sem chave) com rate limit de demonstração "
-    "(15 req/min, 300 req/hour). Envie o header `X-API-KEY` para elevar o limite conforme o plano:\n"
+    "(60 req/min, 1.000 req/mês). Envie o header `X-API-KEY` para elevar o limite conforme o plano:\n"
     "- **Starter**: 600 req/min (fila compartilhada, insumos + composições)\n"
     "- **Pro**: 3.000 req/min (fila prioritária, + BOM e Análise BI)\n"
     "- **Business**: 10.000 req/min (fila dedicada, + endpoints exclusivos)\n\n"
@@ -105,14 +130,15 @@ _MCP_SECTION = (
     "O AutoSINAPI expõe suas tools via MCP (Model Context Protocol). "
     "Conecte seus agentes de IA (Claude, Cursor, VSCode, OpenCode, Hermes, OpenClaw) "
     "diretamente ao motor de dados do SINAPI.\n\n"
-    "### Endpoint SSE\n"
-    "`https://mcp.autosinapi.mundoaec.com/sse`\n\n"
+    "### Endpoint Streamable HTTP / SSE\n"
+    f"`{MCP_SSE_ENDPOINT}`\n\n"
     "### Autenticação\n"
-    "Header `X-API-KEY`. Sem chave → modo demonstração (15 req/min). "
-    "Com chave válida → rate limit do plano.\n\n"
+    "O transporte MCP exige `X-API-KEY`; a chave é validada no Kong e o rate limit "
+    "segue o plano. O modo anônimo de 60 req/mês aplica-se aos endpoints REST "
+    "públicos, não ao MCP remoto.\n\n"
     "### Tools disponíveis\n"
     "- **Tier 1** (todas os planos): sinapi_health, sinapi_portal_me, sinapi_stats, sinapi_filters, "
-    "sinapi_search_insumos, sinapi_get_insumo, sinapi_search_composicoes, sinapi_get_composicao\n"
+    "sinapi_search_insumos, sinapi_get_insumo, sinapi_search_composicoes, sinapi_search, sinapi_get_composicao\n"
     "- **Tier 2** (Pro+): sinapi_get_bom, sinapi_get_hora_homem, sinapi_get_curva_abc, "
     "sinapi_get_curva_abc_classificacao, sinapi_get_tendencias, sinapi_get_precos_uf, "
     "sinapi_get_produtividade, sinapi_get_onde_usado, sinapi_get_historico, sinapi_get_manutencoes, sinapi_get_audit\n\n"
@@ -121,7 +147,7 @@ _MCP_SECTION = (
     "de cada cliente (Claude Desktop, Cursor, OpenCode, VSCode, OpenAI Codex, Hermes, OpenClaw).\n\n"
     "### Exemplo de conexão (curl)\n"
     "```bash\n"
-    "curl -N https://mcp.autosinapi.mundoaec.com/sse \\\n"
+    f"curl -N {MCP_SSE_ENDPOINT} \\\n"
     "  -H \"X-API-KEY: SUA_CHAVE_AQUI\"\n"
     "```\n"
 )
@@ -163,7 +189,7 @@ app = FastAPI(
         "API para consulta de preços, custos, estruturas e análises da base de dados SINAPI.\n\n"
         + _AUTH_DOCS
     ),
-    version="0.4.0-beta.0",
+    version=API_VERSION,
 )
 
 # Injeta o securityScheme ApiKeyAuth (X-API-KEY) no schema OpenAPI para o
@@ -186,7 +212,7 @@ def custom_openapi():
         "description": (
             "Chave de API da assinatura (Starter / Pro / Business). Opcional: "
             "endpoints /api/v1/public/* são acessíveis sem chave (rate limit de "
-            "demonstração: 15 req/min, 300 req/hour). Com X-API-KEY válido os limites "
+            "demonstração: 60 req/min, 1.000 req/mês). Com X-API-KEY válido os limites "
             "sobem conforme o plano onde aplicável."
         ),
     }
@@ -211,6 +237,11 @@ if os.path.isdir(_data_dir):
     app.mount("/api/v1/public/data/geo", StaticFiles(directory=_data_dir), name="data")
 
 app.include_router(portal_router)
+
+# ── Painel CMS/CRM (SPEC-006): CRM, mensagens (MD) e portal/assinaturas ────
+app.include_router(admin_crm_router)
+app.include_router(admin_messages_router)
+app.include_router(admin_portal_router)
 
 # ── Métricas Prometheus (consumido pelo Netdata go.d prometheus collector) ──
 if Instrumentator is not None:
@@ -247,11 +278,11 @@ def _init_sentry():
 
 def _update_quota_gauges(stop_event: threading.Event):
     from sqlalchemy import text as sa_text
-    from .database import SessionLocal
+    from .database import SaasSessionLocal
 
     while not stop_event.is_set():
         try:
-            db = SessionLocal()
+            db = SaasSessionLocal()
             rows = db.execute(
                 sa_text(
                     """
@@ -325,7 +356,7 @@ async def log_requests(request: Request, call_next):
     return response
 
 @app.get("/api/v1/public/health", tags=["tier_1", "Health"], summary="Verificar health check da API", response_description="Status do serviço, banco e Redis.", responses=_HEALTH_RESPONSES)
-@app.get("/api/v1/sinapi/health", tags=["tier_1", "Health"], include_in_schema=False)
+@app.get("/api/v1/sinapi/health", tags=["tier_1", "Health"], summary="Verificar health check da API", include_in_schema=False)
 def health_check(db: Session = Depends(get_db)):
     """
     Health check endpoint. Retorna status do banco, Redis e versão da API.
@@ -338,7 +369,7 @@ def health_check(db: Session = Depends(get_db)):
     (janela curta), mantendo o health barato (< 300 ms) sem alterar o contrato
     observável — o valor é exatamente o que `_get_max_data_referencia` retorna.
     """
-    checks = {"status": "healthy",         "version": "0.4.0-beta.0", "timestamp": datetime.utcnow().isoformat() + "Z"}
+    checks = {"status": "healthy",         "version": API_VERSION, "timestamp": datetime.utcnow().isoformat() + "Z"}
 
     try:
         db.execute(text("SELECT 1"))
