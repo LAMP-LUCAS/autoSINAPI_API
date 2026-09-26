@@ -18,9 +18,18 @@ Configuration (env):
 import os
 import json
 import logging
+import re
 from typing import Optional
 
 logger = logging.getLogger("autosinapi.messagedispatcher")
+
+# Validação deliberadamente enxuta: suficiente para barrar destinatário
+# inválido antes de despachar, sem tenta ser um parser de RFC 5322.
+_EMAIL_RE = re.compile(r"^[^@\s,;<>\"]+@[^@\s,;<>\"]+\.[A-Za-z]{2,}$")
+
+
+def _is_valid_email(value: str) -> bool:
+    return bool(value) and len(value) <= 254 and bool(_EMAIL_RE.match(value))
 
 
 class MessageDispatcherError(Exception):
@@ -82,15 +91,30 @@ class MessageDispatcher:
 
     # ── inbound (communication) ───────────────────────────────────────────────
     def send(self, topic: str, message: str, title: Optional[str] = None,
-             sender: Optional[str] = None, metadata: Optional[dict] = None) -> dict:
-        """Send a message through the authenticated MD inbound gateway."""
-        return self._request("POST", "/api/v1/inbound", {
+             sender: Optional[str] = None, metadata: Optional[dict] = None,
+             recipient: Optional[str] = None) -> dict:
+        """Send a message through the authenticated MD inbound gateway.
+
+        `recipient` endereça a um destinatário específico. Sem ele, o MD aplica
+        a regra de roteamento do tópico (fallback `gateway.admin_notify`), e a
+        mensagem NÃO chega ao cliente final — por isso a validação é estrita:
+        um e-mail malformado é falha nossa, e falhar cedo evita mandar a
+        credencial para o destinatário errado.
+        """
+        payload = {
             "topic": topic,
             "message": message,
             "title": title,
             "sender": sender,
             "metadata": metadata or {},
-        }, auth=True, api_key=self.inbound_api_key)
+        }
+        if recipient is not None:
+            recipient = recipient.strip()
+            if not _is_valid_email(recipient):
+                raise MessageDispatcherError(f"recipient invalido: {recipient!r}")
+            payload["recipient"] = recipient
+        return self._request("POST", "/api/v1/inbound", payload,
+                             auth=True, api_key=self.inbound_api_key)
 
     # ── topics ────────────────────────────────────────────────────────────────
     def list_topics(self) -> list:
