@@ -35,6 +35,12 @@ def _row(r):
             out[k] = str(v)
         else:
             out[k] = v
+    # `client_is_test` nunca pode sair como None/absente em linha com contexto
+    # de cliente: consumidores fazem comparação booleana e None vira Unknown
+    # silencioso. Linha sem cliente (ex.: lead) não recebe o campo, para não
+    # fabricar um False que não significa nada.
+    if "client_is_test" in out or "client_email" in out:
+        out["client_is_test"] = bool(out.get("client_is_test"))
     return out
 
 
@@ -293,6 +299,7 @@ def list_subscriptions(
                s.current_period_end, s.created_at,
                p.slug AS plan_slug, p.name AS plan_name, p.price_cents,
                c.id AS client_id, c.name AS client_name, c.email AS client_email,
+               COALESCE(c.is_test, FALSE) AS client_is_test,
                (SELECT COUNT(*) FROM saas.api_keys k WHERE k.subscription_id = s.id AND k.status='active') AS active_keys,
                (SELECT COUNT(*) FROM saas.usage_logs ul
                   JOIN saas.api_keys k2 ON k2.id = ul.api_key_id
