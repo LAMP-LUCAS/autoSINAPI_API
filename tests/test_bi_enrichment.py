@@ -142,6 +142,52 @@ class TestTendenciasEnrichment:
         assert abs(concreto[1]["media_movel"] - 105.0) < 1e-6
 
 
+# ── §3.7 da auditoria MCP de custo (STORY-SIN-095) ────────────────
+# Sintoma auditado (2026-09-29): `get_tendencias` devolvia
+# variacao_mensal=0.0 em TODOS os pontos e variacao_pct=null, mesmo com o
+# preço se movendo (520,26 → 511,06 → 558,69 → 570,51). Causa: as linhas do
+# BI trazem `preco_medio`, mas `_compute_variacao` lia `valor` → 0.0 silencioso.
+
+class TestVariacaoTendencias:
+    def test_compute_variacao_explicit_preco_medio_key(self):
+        serie = [
+            {"mes": "2025-07", "preco_medio": 520.26},
+            {"mes": "2025-09", "preco_medio": 511.06},
+        ]
+        out = crud._compute_variacao(serie, value_key="preco_medio")
+        assert out[1]["variacao_mensal"] == pytest.approx(-9.2, abs=0.01)
+        assert out[1]["variacao_pct"] == pytest.approx(-1.7683, abs=0.01)
+
+    def test_compute_variacao_rejects_series_without_value(self):
+        # Nunca assumir 0 silencioso quando a chave de valor não existe —
+        # era exatamente o defeito que zerava as tendências.
+        with pytest.raises(ValueError):
+            crud._compute_variacao([{"mes": "2025-01"}])
+
+    def test_tendencias_variacao_reflects_price_movement(self):
+        db = _db_mock([
+            {"classificacao": "34872 - CONCRETO", "mes": "2025-07",
+             "preco_medio": 520.26, "qtd_insumos": 1},
+            {"classificacao": "34872 - CONCRETO", "mes": "2025-08",
+             "preco_medio": 520.26, "qtd_insumos": 1},
+            {"classificacao": "34872 - CONCRETO", "mes": "2025-09",
+             "preco_medio": 511.06, "qtd_insumos": 1},
+            {"classificacao": "34872 - CONCRETO", "mes": "2026-04",
+             "preco_medio": 558.69, "qtd_insumos": 1},
+        ])
+        result = crud.get_tendencias(db, uf="SP", regime="NAO_DESONERADO",
+                                     data_referencia="2026-07",
+                                     agrupar_por="item", codigos=[34872])
+        rows = [r for r in result if r["classificacao"].startswith("34872")]
+        assert len(rows) == 4
+        assert rows[0]["variacao_mensal"] is None      # 1º ponto: null
+        assert rows[1]["variacao_mensal"] == 0.0        # preço igual → 0 legítimo
+        assert rows[2]["variacao_mensal"] == pytest.approx(-9.2, abs=0.01)
+        assert rows[2]["variacao_pct"] is not None      # RED: null (prev=0)
+        assert rows[3]["variacao_mensal"] == pytest.approx(47.63, abs=0.01)
+        assert rows[3]["variacao_pct"] == pytest.approx(9.3195, abs=0.01)
+
+
 # ── Cenário orçamentário ───────────────────────────────────────────
 
 class TestCenario:

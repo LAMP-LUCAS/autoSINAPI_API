@@ -696,19 +696,29 @@ WITH RECURSIVE composicao_completa (item_codigo, tipo_item, coeficiente_total, n
         item['classe_abc'] = 'A' if item['percentual_acumulado'] <= 80 else ('B' if item['percentual_acumulado'] <= 95 else 'C')
     return insumos[:top_n]
 
-def _compute_variacao(serie):
+def _compute_variacao(serie, value_key: str = 'valor'):
     """
-    Enriquece uma série de pontos {data_referencia, valor} com variação mês a mês.
+    Enriquece uma série de pontos {data_referencia, <value_key>} com variação mês a mês.
 
+    - `value_key`: chave numérica do ponto — 'valor' nas séries de histórico de
+      custos; 'preco_medio' nas séries de tendência do BI (STORY-SIN-095/§3.7:
+      ler a chave errada zerava a série inteira em silêncio).
     - 1º ponto: variacao_mensal e variacao_pct como None.
     - demais: variacao_mensal = valor_atual - valor_anterior;
       variacao_pct = variacao_mensal / valor_anterior * 100 (None se anterior == 0).
+    - Ponto sem `value_key` → ValueError: nunca assumir 0 silencioso (zero
+      silencioso era exatamente o defeito da auditoria §3.7).
     """
     out = []
     prev = None
     for point in serie:
         item = dict(point)
-        valor = float(item.get('valor') or 0)
+        if value_key not in item:
+            raise ValueError(
+                f"_compute_variacao: ponto sem a chave {value_key!r} "
+                f"(chaves presentes: {sorted(item)}) — recusado para não zerar a série"
+            )
+        valor = float(item.get(value_key) or 0)
         if prev is None:
             item['variacao_mensal'] = None
             item['variacao_pct'] = None
@@ -938,7 +948,8 @@ def get_tendencias(
     enriched = []
     for _, group in groupby(rows, key=lambda r: r['classificacao']):
         series = list(group)
-        with_var = _compute_variacao(series)
+        # Linhas do BI trazem `preco_medio` (não `valor`) — STORY-SIN-095/§3.7
+        with_var = _compute_variacao(series, value_key='preco_medio')
         values = [float(r.get('preco_medio') or 0) for r in series]
         variacao_periodo = None
         inflacao_acumulada = None
