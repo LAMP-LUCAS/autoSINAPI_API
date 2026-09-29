@@ -31,6 +31,9 @@ Navegue pelos arquivos da especificação técnica local:
 > **EPIC em andamento:** [EPIC-GOOGLE-POWERBI-SINAPI](./epics/EPIC-search-engine-google-powerbi.md) — Motor de busca ("Google") + BI analítico ("PowerBI").
 > **Spec-Rule:** [Search Pipeline com Degradação Graciosa](./spec-rules/SPEC-RULE-search-pipeline-graceful-degradation.md).
 > **Audit:** [Busca e BI 2026-08-14](./audits/2026-08-14_SEARCH-ENHANCEMENT-AUDIT.md).
+> **Auditoria MCP Custo 2026-09-29:** texto integral na casa
+> (`SistemaServerLight/docs/audits/autosinapi/2026-09-29_MCP-CUSTO-CONSTRUCAO-AUDIT.md`)
+> · Story: [STORY-SIN-095 — correções P0](./stories/STORY-SIN-095-auditoria-mcp-custo-p0.md).
 > **Sprint:** [workplans/SPRINT-SEARCH-GOOGLE-POWERBI](./workplans/SPRINT-SEARCH-GOOGLE-POWERBI.md).
 4.  **[Agilidade e Histórico (agile/)](./agile/):**
     *   **[Sprint - Enriquecimento de API](./agile/SPRINT_ENRIQUECIMENTO.md)**
