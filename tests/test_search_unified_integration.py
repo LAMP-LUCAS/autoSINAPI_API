@@ -109,3 +109,43 @@ class TestRelatedIntegration:
         if not out:
             pytest.skip("composição 88307 sem relacionadas")
         assert out[0].get("jaccard", 0) >= 0
+
+
+class TestRelevanceRankingIntegration:
+    """STORY-SIN-095/§3.2 — a busca precisa rankear de fato (auditoria MCP §3.2).
+
+    Estado auditado (2026-09-29): score constante 1.1 para qualquer item que
+    contém o termo (word_similarity satura em 1.0 quando a palavra está no
+    texto; `GREATEST(similarity, word_similarity * 1.1)` empatava tudo e o
+    desempate alfabético colocava ARGAMASSA à frente de CIMENTO PORTLAND).
+    Score também violava o intervalo 0..1 da SPEC-RULE-search-pipeline.
+    """
+
+    def test_cimento_ranks_prefix_first_and_scores_discriminate(self, db):
+        if not crud._trigram_enabled(db):
+            pytest.skip("pg_trgm indisponível")
+        result = crud.search_unified(
+            db, "cimento", "SP", "2026-07", "NAO_DESONERADO",
+            tipo="insumo", sort="relevance", skip=0, limit=10,
+        )
+        items = result["items"]
+        assert items, "busca 'cimento' sem resultados"
+        # (a) o item que *começa* com o token vem primeiro (não o alfabético)
+        assert items[0]["descricao"].upper().startswith("CIMENTO"), \
+            items[0]["descricao"]
+        # (b) score discrimina relevância (não constante)
+        scores = [it.get("score") for it in items]
+        assert len({s for s in scores if s is not None}) > 1, \
+            f"score constante: {scores}"
+
+    def test_multiword_scores_normalized_0_to_1(self, db):
+        if not crud._trigram_enabled(db):
+            pytest.skip("pg_trgm indisponível")
+        result = crud.search_insumos_by_descricao(
+            db, "perfil aco", "SP", "2026-07", "NAO_DESONERADO", skip=0, limit=10,
+        )
+        scores = [it.get("score") for it in result["items"]
+                  if it.get("score") is not None]
+        assert scores, "busca multi-tokeno sem score"
+        assert all(0.0 <= s <= 1.0 for s in scores), \
+            f"score fora de [0,1]: {scores}"

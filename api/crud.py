@@ -88,6 +88,41 @@ def _tokenize_query(q: str) -> List[str]:
     return [tok for tok in (q or "").split() if tok]
 
 
+# ── STORY-SIN-095/§3.2 — score de relevância de fato (auditoria MCP §3.2) ───
+# O score antigo era `GREATEST(similarity, word_similarity * 1.1)`: como
+# word_similarity satura em 1.0 para qualquer linha que contém a palavra, todo
+# item empatava em 1.1/token e a ordenação caía no desempate alfabético
+# (ARGAMASSA antes de CIMENTO PORTLAND), com score fora do 0..1 da
+# SPEC-RULE-search-pipeline-graceful-degradation.
+
+def _relevance_base(desc_expr: str, pkey: str) -> str:
+    """Base trigram de similaridade limitada a [0,1] para :pkey."""
+    return (
+        f"LEAST(1.0, GREATEST(similarity(f_unaccent({desc_expr}), "
+        f"f_unaccent(:{pkey})), word_similarity(f_unaccent(:{pkey}), "
+        f"f_unaccent({desc_expr}))))"
+    )
+
+
+def _relevance_prefix(desc_expr: str, pkey: str) -> str:
+    """1.0 se a descrição *começa* com :pkey (unaccent + case-insensitive)."""
+    return (
+        f"(CASE WHEN f_unaccent({desc_expr}) ILIKE f_unaccent(:{pkey}) || '%' "
+        f"THEN 1.0 ELSE 0.0 END)"
+    )
+
+
+def _relevance_score_single(desc_expr: str) -> str:
+    """Score de relevância ∈ [0,1] para busca de token único (§3.2).
+
+    `0.5 * similaridade + 0.5 * prefixo` — quem começa com o termo vence
+    quem apenas o contém, mesmo empatando na similaridade de trigramas."""
+    return (
+        f"(0.5 * {_relevance_base(desc_expr, 'q')} + "
+        f"0.5 * {_relevance_prefix(desc_expr, 'q')}) AS score"
+    )
+
+
 def _build_token_match(desc_expr: str, tokens: List[str], trigram: bool,
                        combine: str = "AND") -> tuple[str, dict, str]:
     """Monta cláusula de correspondência por token (Google-style multi-termo).
@@ -103,8 +138,10 @@ def _build_token_match(desc_expr: str, tokens: List[str], trigram: bool,
         (match_clause, params, score_expr): cláusula WHERE por token, bind params
         (`:t_N` para ILIKE, `:q_N` para similaridade) e expressão de score.
 
-    Score = soma por token de `GREATEST(similarity, word_similarity * 1.1)` quando
-    trigram ativo e token >= 3 chars; caso contrário `NULL::float` (fallback ILIKE).
+    Score = média por token de `LEAST(1.0, GREATEST(similarity, word_similarity))`
+    quando trigram ativo e token >= 3 chars, mais bônus de posição (frase na
+    frente +0.3; 1º token na frente +0.2) — score ∈ [0,1] (STORY-SIN-095/§3.2);
+    caso contrário `NULL::float` (fallback ILIKE).
     """
     joiner = " AND " if combine == "AND" else " OR "
     clauses, params, score_parts = [], {}, []
@@ -114,15 +151,18 @@ def _build_token_match(desc_expr: str, tokens: List[str], trigram: bool,
         if trigram and len(tok) >= 3:
             params[qkey] = tok
             clauses.append(f"f_unaccent({desc_expr}) ILIKE f_unaccent(:{tkey})")
-            score_parts.append(
-                f"GREATEST(similarity(f_unaccent({desc_expr}), f_unaccent(:{qkey})), "
-                f"word_similarity(f_unaccent(:{qkey}), f_unaccent({desc_expr})) * 1.1)",
-            )
+            score_parts.append(_relevance_base(desc_expr, qkey))
         else:
             clauses.append(f"{desc_expr} ILIKE :{tkey}")
     match_clause = "(" + joiner.join(clauses) + ")"
     if score_parts:
-        score_expr = "(" + " + ".join(score_parts) + ") AS score"
+        params["q_phrase"] = " ".join(tokens)
+        params["q0"] = tokens[0]
+        score_expr = (
+            f"(0.5 * (({' + '.join(score_parts)}) / {len(score_parts)}.0)"
+            f" + 0.3 * {_relevance_prefix(desc_expr, 'q_phrase')}"
+            f" + 0.2 * {_relevance_prefix(desc_expr, 'q0')}) AS score"
+        )
     else:
         score_expr = "NULL::float AS score"
     return match_clause, params, score_expr
@@ -263,10 +303,7 @@ def _search_where(
         tok = tokens[0]
         if trigram and len(tok) >= 3:
             match_clause = f"f_unaccent({desc_col}) ILIKE f_unaccent(:query)"
-            score_expr = (
-                f"GREATEST(similarity(f_unaccent({desc_col}), f_unaccent(:q)), "
-                f"word_similarity(f_unaccent(:q), f_unaccent({desc_col})) * 1.1) AS score"
-            )
+            score_expr = _relevance_score_single(desc_col)
         else:
             match_clause = f"{desc_col} ILIKE :query"
             score_expr = "NULL::float AS score"
@@ -452,10 +489,7 @@ def search_unified(
         tok = tokens[0]
         if trigram and len(tok) >= 3:
             match_expr = "f_unaccent(t.descricao) ILIKE f_unaccent(:query)"
-            score_expr = (
-                "GREATEST(similarity(f_unaccent(t.descricao), f_unaccent(:q)), "
-                "word_similarity(f_unaccent(:q), f_unaccent(t.descricao)) * 1.1) AS score"
-            )
+            score_expr = _relevance_score_single("t.descricao")
         else:
             match_expr = "t.descricao ILIKE :query"
             score_expr = "NULL::float AS score"
