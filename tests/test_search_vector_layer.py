@@ -54,6 +54,56 @@ class TestRRFMerge:
         assert merged[0]["codigo"] == 2
 
 
+class TestVectorProviderDegradationBudget:
+    """STORY-SIN-095/§3.3 — orçamento de tempo da camada vetorial.
+
+    Auditoria (2026-09-29): `sinapi_search(vector=on)` estourava o timeout de
+    30s do MCP (×3 retries ≈ 92s) e virava ERRO — o primary pendurava em
+    EMBEDDING_TIMEOUT=120s (nó Tailscale morto) antes de alcançar o fallback.
+    SPEC-RULE-search-pipeline-graceful-degradation: lentidão também é falha →
+    responder rápido com `meta.degraded=['vector']`, nunca travar a request.
+    """
+
+    def test_slow_embedding_responds_within_budget(self, monkeypatch):
+        import time as _time
+
+        from api import crud
+        from api.config import settings
+        import api.vector_store as vs
+
+        monkeypatch.setattr(crud, "_trigram_enabled", lambda db: True)
+        monkeypatch.setattr(crud, "search_unified",
+                            lambda *a, **k: {"items": [_item(1)], "total": 1})
+        monkeypatch.setattr(crud, "get_usado_em_summary",
+                            lambda db, codigo, top=5: {})
+
+        seen: dict = {}
+
+        class SlowEmbed:
+            def embed(self, texts):
+                _time.sleep(1.2)          # simula o primary pendurado
+                return [[0.1] * 8]
+
+        def _mk_provider(*a, **k):
+            seen.update(k)
+            return SlowEmbed()
+
+        monkeypatch.setattr(vs, "EmbeddingProvider", _mk_provider)
+        monkeypatch.setattr(settings, "SEARCH_VECTOR_TIMEOUT", 0.3,
+                            raising=False)
+
+        t0 = _time.monotonic()
+        result = search.unified_search(None, "areia", "SP", "2026-07",
+                                       "NAO_DESONERADO", vector="on")
+        elapsed = _time.monotonic() - t0
+
+        assert "vector" in result["meta"]["degraded"]
+        # o provider precisa receber o orçamento curto (backstop de socket)
+        assert seen.get("timeout") is not None and seen["timeout"] <= 0.3, seen
+        # e a request inteira responde dentro do orçamento
+        assert elapsed <= 1.0, f"orçamento estourado: {elapsed:.2f}s"
+
+
 class TestUnifiedSearchVectorDegradation:
     def test_vector_off_not_in_providers(self):
         # Sem chamadas a banco: proíbe qualquer degradação fake.

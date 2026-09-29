@@ -93,6 +93,11 @@ class Settings(BaseSettings):
     EMBEDDING_BATCH_SIZE: int = 16
     # Timeout de inferência: 1ª chamada no notebook inclui warm-up (~21s+).
     EMBEDDING_TIMEOUT: float = 120.0
+    # Orçamento da camada vetorial POR REQUEST de busca (STORY-SIN-095/§3.3):
+    # o passo inteiro (embedding + cosine) responde ou degrada dentro dele —
+    # o primary pendurado não pode estourar o timeout do cliente (MCP 30s).
+    # O provider recebe timeout/2 por endpoint (primary + fallback somam o orçamento).
+    SEARCH_VECTOR_TIMEOUT: float = 8.0
 
 # Cria uma instância única das configurações que será importada pelo resto da aplicação.
 # Isso garante que as configurações sejam lidas e validadas uma única vez.

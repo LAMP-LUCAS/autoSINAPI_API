@@ -149,3 +149,37 @@ class TestRelevanceRankingIntegration:
         assert scores, "busca multi-tokeno sem score"
         assert all(0.0 <= s <= 1.0 for s in scores), \
             f"score fora de [0,1]: {scores}"
+
+
+class TestVectorFailureIsolationIntegration:
+    """STORY-SIN-095/§3.3 — falha SQL da camada 4 não envenena a request.
+
+    Reproduzido ao vivo (2026-09-29): cosine_search falhava e deixava a
+    transação da request abortada → o enriquecimento seguinte (usado_em)
+    estourava InFailedSqlTransaction = 5xx, quando o contrato exigia
+    meta.degraded=['vector'] com resposta íntegra.
+    """
+
+    def test_vector_sql_failure_keeps_request_intact(self, db, monkeypatch):
+        from sqlalchemy import text as sql_text
+        from api import search
+        import api.vector_store as vs
+
+        def _boom(vdb, *a, **k):
+            vdb.execute(sql_text("SELECT * FROM tabela_inexistente_xyz"))
+            return []
+
+        class _Embed:
+            def embed(self, texts):
+                return [[0.0] * 8]
+
+        monkeypatch.setattr(vs, "cosine_search", _boom)
+        monkeypatch.setattr(vs, "EmbeddingProvider", lambda *a, **k: _Embed())
+        result = search.unified_search(
+            db, "cimento", "SP", "2026-07", "NAO_DESONERADO",
+            tipo="insumo", vector="on", limit=5,
+        )
+        assert result["items"], "base trigrama deveria continuar íntegra"
+        assert "vector" in result["meta"]["degraded"]
+        # sessão da request saudável: segunda chamada segue respondendo
+        assert crud._trigram_enabled(db) is True

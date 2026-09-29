@@ -14,6 +14,9 @@ from typing import List, Optional
 
 import logging
 
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
+
 from sqlalchemy.orm import Session
 
 from . import crud
@@ -88,30 +91,59 @@ def unified_search(
     items, total = result["items"], int(result.get("total") or 0)
 
     # Camada 4 opt-in: vetor ativo → tenta enriquecer/rerankar por RRF.
-    # Contrato: só entra em `providers` se funcionar; falha → `degraded`.
+    # Contrato: só entra em `providers` se funcionar; falha OU lentidão →
+    # `degraded` (SPEC-RULE-search-pipeline-graceful-degradation).
+    # STORY-SIN-095/§3.3: o passo vetorial roda sob orçamento
+    # (`SEARCH_VECTOR_TIMEOUT`) — o primary pendurado (EMBEDDING_TIMEOUT=120s)
+    # não pode estourar o timeout do cliente (MCP: 30s → virava erro).
     if vector not in (None, "off"):
-        try:
-            from .config import settings
-            from . import vector_store
+        from .config import settings
+
+        budget = float(getattr(settings, "SEARCH_VECTOR_TIMEOUT", 8.0))
+
+        def _vector_step():
+            from . import vector_store  # import opcional: dentro do orçamento
 
             meta_model = vector_store.VECTOR_MODELS[settings.SEARCH_VECTOR_MODEL]
-            tname = vector_store.table_name(meta_model["dims"], settings.SEARCH_VECTOR_MODEL)
-            query_vec = vector_store.EmbeddingProvider().embed([q]) if items else []
+            tname = vector_store.table_name(meta_model["dims"],
+                                             settings.SEARCH_VECTOR_MODEL)
+            # timeout/2 por endpoint: primary + fallback somam o orçamento.
+            query_vec = (vector_store.EmbeddingProvider(timeout=budget / 2).embed([q])
+                         if items else [])
             if not query_vec:
-                degraded.append("vector")
-            else:
-                hits = vector_store.cosine_search(
-                    db, tname, tipo if tipo in ("insumo", "composicao") else "all",
+                return []
+            # Sessão própria: falha SQL da camada 4 não envenena a transação
+            # da request (§3.3: erro vetorial derrubava o enriquecimento
+            # seguinte com InFailedSqlTransaction → 5xx em vez de degraded).
+            vdb = Session(db.get_bind())
+            try:
+                return vector_store.cosine_search(
+                    vdb, tname, tipo if tipo in ("insumo", "composicao") else "all",
                     query_vec[0], limit=max(limit, 40),
                 )
-                if not hits:
-                    degraded.append("vector")
-                else:
-                    items = _rrf_merge(items, hits)[:limit]
-                    providers.append("vector")
+            finally:
+                vdb.close()
+
+        executor = ThreadPoolExecutor(max_workers=1,
+                                      thread_name_prefix="search-vector")
+        try:
+            hits = executor.submit(_vector_step).result(timeout=budget)
+            if not hits:
+                degraded.append("vector")
+            else:
+                items = _rrf_merge(items, hits)[:limit]
+                providers.append("vector")
+        except FuturesTimeout:
+            degraded.append("vector")
+            logger.warning(
+                "camada vetorial estourou o orçamento de %.1fs — degradada",
+                budget,
+            )
         except Exception as exc:  # noqa: BLE001 - degradação graciosa
             degraded.append("vector")
             logger.warning("camada vetorial degradada: %s", exc)
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
     for it in items:
         if it.get("tipo") == "insumo":
