@@ -33,6 +33,8 @@ def build_meta(
     total: Optional[int] = None,
     relaxed: bool = False,
     motivo: Optional[str] = None,
+    total_itens_sem_preco: Optional[int] = None,
+    proporcao_sem_preco: Optional[float] = None,
 ) -> dict:
     return {
         "providers": list(providers),
@@ -43,6 +45,10 @@ def build_meta(
         "total": total,
         "relaxed": relaxed,
         "motivo": motivo,
+        # S-02: o agente precisa saber, ANTES de orçar, quantos itens da página
+        # vieram sem preço (e não é por acaso que vieram).
+        "total_itens_sem_preco": total_itens_sem_preco,
+        "proporcao_sem_preco": proporcao_sem_preco,
     }
 
 
@@ -170,7 +176,9 @@ def unified_search(
     meta = build_meta(providers, degraded, did_you_mean=dym,
                       page=page_no, page_size=limit, total=total,
                       relaxed=bool(result.get("relaxed", False)),
-                      motivo=motivo)
+                      motivo=motivo,
+                      total_itens_sem_preco=result.get("total_itens_sem_preco"),
+                      proporcao_sem_preco=result.get("proporcao_sem_preco"))
     # total é o total textual; o RRF apenas reordena dentro da página →
     # mantém contrato (total >= len(items)).
     return {"items": items, "total": total, "meta": meta}

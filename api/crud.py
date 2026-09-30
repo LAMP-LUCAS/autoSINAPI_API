@@ -73,7 +73,12 @@ def get_insumo_by_codigo(
         "codigo": codigo, "uf": uf.upper(), "start_date": start_date, "end_date": end_date,
         "regime": regime.upper(), "status": settings.DEFAULT_ITEM_STATUS
     }).first()
-    return result._mapping if result else None
+    if not result:
+        return None
+    data = dict(result._mapping)
+    # S-02: preço zerado/NULL vira `null` + motivo (nunca 0.0 silencioso).
+    _aplicar_preco_indisponivel(data, campo="preco_mediano")
+    return data
 
 def _normalize_search_q(q: str):
     """Retorna (termo_limpo, codigo_int). Se q for puramente numérico,
@@ -240,6 +245,40 @@ def _trigram_enabled(db: Session) -> bool:
         return False
 
 
+MOTIVO_SEM_PRECO = "SEM_COTACAO_NA_UF"
+
+
+def _aplicar_preco_indisponivel(item: dict, campo: str = "valor") -> bool:
+    """Preço zerado/NULL → `null` + motivo. Devolve True se marcou.
+
+    STORY-MCP-007/S-02. `custo_total`/`preco_mediano` zerados existem no banco
+    (ex.: os "concreto magro" 104829..104832 em SP/2026-08, sem linha de preço).
+    Emitir `0.0` é a pior falha possível num orçamento: o agente soma, formata
+    e entrega R$ 0,00 sem nenhum aviso (ADR 010).
+
+    **Convenção única** (nada de `preco_indisponivel`, que seria o inverso e
+    ainda confunde o consumidor): `preco_disponivel: false` = não há preço
+    publicado — é o mesmo sinal do §3.4 — e `motivo_indisponivel` diz por quê.
+    """
+    valor = item.get(campo)
+    try:
+        sem_preco = valor is None or float(valor) == 0.0
+    except (TypeError, ValueError):
+        sem_preco = True
+    if sem_preco:
+        item[campo] = None
+        item["preco_disponivel"] = False
+        item["motivo_indisponivel"] = MOTIVO_SEM_PRECO
+        return True
+    item.setdefault("preco_disponivel", True)
+    return False
+
+
+def _marcar_preco_indisponivel(itens: List[dict]) -> int:
+    """Aplica `_aplicar_preco_indisponivel` numa lista de itens de busca."""
+    return sum(1 for item in itens if _aplicar_preco_indisponivel(item))
+
+
 def _run_search(db: Session, query, params: dict) -> dict:
     """Executa uma busca paginada e devolve {items, total}.
 
@@ -252,7 +291,15 @@ def _run_search(db: Session, query, params: dict) -> dict:
         m = dict(r._mapping)
         total = m.pop("total_count", 0)
         items.append(_json_safe(m))
-    return {"items": items, "total": int(total) if rows else 0}
+    sem_preco = _marcar_preco_indisponivel(items)
+    total = int(total) if rows else 0
+    out = {"items": items, "total": total}
+    if sem_preco:
+        # O agente precisa do RECORTO antes de orçar: 1 item sem preço numa
+        # página de 50 é ruído; 20 é sinal de que o filtro está restrito demais.
+        out["total_itens_sem_preco"] = sem_preco
+        out["proporcao_sem_preco"] = round(sem_preco / total * 100, 2) if total else None
+    return out
 
 
 def _json_safe(mapping: dict) -> dict:
@@ -398,6 +445,11 @@ def get_composicao_by_codigo(
         data["preco_disponivel"] = custo is not None and float(custo) > 0
     except (TypeError, ValueError):
         data["preco_disponivel"] = False
+    # STORY-MCP-007/S-02: o sinal sozinho não impede a soma de R$ 0,00 — o
+    # valor ausente vira `null` e ganha motivo nomeado (mesma regra da busca).
+    if not data["preco_disponivel"]:
+        data["custo_total"] = None
+        data["motivo_indisponivel"] = MOTIVO_SEM_PRECO
     # §3.6: `percentual_mo` é NULL em 100% das linhas (o ETL nunca gravou a
     # coluna da migration 005) → calcula o %MO a partir do BOM, usando o
     # mesmo split de `get_composicao_produtividade`. Valor armazenado tem

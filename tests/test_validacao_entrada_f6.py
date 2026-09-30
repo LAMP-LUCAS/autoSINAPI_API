@@ -25,6 +25,8 @@ from unittest.mock import Mock
 
 import pytest
 
+from sqlalchemy import text
+
 from api import crud, schemas, validation
 from api.validation import EntradaInvalida, NaoResolvido
 
@@ -224,3 +226,79 @@ def test_schema_search_meta_tem_motivo():
     assert schemas.SearchMeta(
         providers=["trigram"], total=0, motivo="SEM_RESULTADOS_PARA_O_TERMO",
     ).motivo == "SEM_RESULTADOS_PARA_O_TERMO"
+
+
+# ───────────────────────── S-02 · preço ausente nunca é 0.0 ───────────────────
+
+def test_aplicar_preco_indisponivel_marca_zero():
+    """`0.0` no banco → `null` + sinal. R$ 0,00 silencioso é o pior modo de
+    falha num orçamento (o agente soma, formata e entrega)."""
+    item = {"valor": 0.0, "descricao": "CONCRETO MAGRO PARA LASTRO"}
+    assert crud._aplicar_preco_indisponivel(item) is True
+    assert item["valor"] is None
+    assert item["preco_disponivel"] is False
+    assert item["motivo_indisponivel"] == "SEM_COTACAO_NA_UF"
+
+
+def test_aplicar_preco_indisponivel_preserva_preco_valido():
+    item = {"valor": 27.39}
+    assert crud._aplicar_preco_indisponivel(item) is False
+    assert item["valor"] == 27.39
+    assert item["preco_disponivel"] is True
+    assert "motivo_indisponivel" not in item
+
+
+def test_aplicar_preco_indisponivel_aceita_none_e_texto():
+    for valor in (None, "", "abc"):
+        item = {"valor": valor}
+        assert crud._aplicar_preco_indisponivel(item) is True
+        assert item["valor"] is None
+
+
+def test_run_search_conta_itens_sem_preco():
+    """O envelope avisa QUANTOS itens vieram sem preço (o agente precisa)."""
+    db = Mock()
+    linhas = [
+        _row(codigo=1, valor=10.0, total_count=4),
+        _row(codigo=2, valor=0.0, total_count=4),
+        _row(codigo=3, valor=None, total_count=4),
+        _row(codigo=4, valor=5.0, total_count=4),
+    ]
+    res = db.execute.return_value
+    res.fetchall.return_value = linhas
+    out = crud._run_search(db, text("SELECT 1"), {})
+    assert out["total"] == 4
+    assert out["total_itens_sem_preco"] == 2
+    assert out["proporcao_sem_preco"] == 50.0
+    assert [i["valor"] for i in out["items"]] == [10.0, None, None, 5.0]
+
+
+def test_run_search_sem_itens_sem_preco_nao_inventa_contador():
+    db = Mock()
+    db.execute.return_value.fetchall.return_value = [_row(codigo=1, valor=3.0, total_count=1)]
+    out = crud._run_search(db, text("SELECT 1"), {})
+    assert "total_itens_sem_preco" not in out
+    assert "proporcao_sem_preco" not in out
+
+
+def test_composicao_sem_preco_vira_null_com_motivo():
+    """§3.4 já sinalizava; S-02 tira o 0.0 e nomeia o motivo."""
+    db = _db_with_row_composicao(custo_total=0)
+    out = crud.get_composicao_by_codigo(db, codigo=98676, uf="SP",
+                                        data_referencia="2026-08", regime="NAO_DESONERADO")
+    assert out["preco_disponivel"] is False
+    assert out["custo_total"] is None
+    assert out["motivo_indisponivel"] == "SEM_COTACAO_NA_UF"
+
+
+def _db_with_row_composicao(custo_total):
+    db = Mock()
+    row = Mock()
+    row._mapping = {
+        "codigo": 98676, "descricao": "COMPOSICAO", "unidade": "m2", "grupo": "ESTRUTURA",
+        "status": "ATIVO", "custo_total": custo_total, "percentual_mo": None,
+        "created_at": None, "updated_at": None, "sinapi_versao": "2026.08",
+        "versao_preco": "2026.08",
+    }
+    db.execute.return_value.first.return_value = row
+    return db

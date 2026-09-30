@@ -49,6 +49,11 @@ class Insumo(TraceabilityMixin):
     descricao: str
     unidade: str
     preco_mediano: Optional[float] = None
+    preco_disponivel: Optional[bool] = None
+    """S-02: False quando o insumo não tem preço publicado na UF/competência
+    consultada — `preco_mediano` vem `null`, nunca `0.0`."""
+    motivo_indisponivel: Optional[str] = None
+    """S-02: motivo nomeado da indisponibilidade (ex.: `SEM_COTACAO_NA_UF`)."""
     classificacao: Optional[str] = None
     origem_preco: Optional[str] = None
     status: Optional[str] = None
@@ -75,6 +80,9 @@ class Composicao(TraceabilityMixin):
     preco_disponivel: Optional[bool] = None
     """§3.4: False quando não há preço publicado (`custo_total` 0/NULL) —
     o consumidor nunca deve tratar 0.0 silencioso como custo válido."""
+    motivo_indisponivel: Optional[str] = None
+    """S-02: motivo nomeado da indisponibilidade (ex.: `SEM_COTACAO_NA_UF`).
+    Acompanha `custo_total: null` — nunca um 0.0 silencioso."""
     versao_preco: Optional[str] = None
     """§3.9: versão SINAPI do custo consultado em `data_referencia`
     (`AAAA.MM`), lida da linha de preço com fallback pela própria data —
@@ -109,6 +117,9 @@ class SearchMeta(BaseModel):
     relaxed: bool = False
     # STORY-MCP-007/S-03: resultado vazio é resposta explícita (`motivo`).
     motivo: Optional[str] = None
+    # STORY-MCP-007/S-02: itens da página sem preço (`valor: null`).
+    total_itens_sem_preco: Optional[int] = None
+    proporcao_sem_preco: Optional[float] = None
 
 class UsadoEmItem(BaseModel):
     composicao_codigo: int
@@ -126,6 +137,11 @@ class UnifiedSearchItem(BaseModel):
     unidade: str
     tipo: str
     valor: Optional[float] = None
+    preco_disponivel: Optional[bool] = None
+    """S-02: False quando o item não tem preço publicado na UF/competência —
+    `valor` vem `null`, nunca `0.0` (mesma convenção do §3.4)."""
+    motivo_indisponivel: Optional[str] = None
+    """S-02: motivo nomeado da indisponibilidade (ex.: `SEM_COTACAO_NA_UF`)."""
     classificacao: Optional[str] = None
     """§3.10: faceta de classificação do item — insumo: natureza de origem
     (MATERIAL, EQUIPAMENTO (AQUISIÇÃO)...); composição: seu `grupo` (faceta

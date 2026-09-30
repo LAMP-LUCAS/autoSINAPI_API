@@ -64,10 +64,16 @@ class TestPrecoDisponivel34:
                 data_referencia="2026-07", regime="NAO_DESONERADO",
             )
         assert out is not None
-        assert out.get("custo_total") in (0, 0.0, "0")
+        # STORY-MCP-007/S-02: o §3.4 exigia um SINAL; o S-02 exige que o 0.0
+        # SAIA (vira null) para não ser somado como R$ 0,00 num orçamento. O
+        # sinal `preco_disponivel` continua sendo o contrato do §3.4.
+        assert out.get("custo_total") is None, (
+            "custo zerado não pode sair como 0.0 — vira null + motivo (S-02)"
+        )
         assert out.get("preco_disponivel") is False, (
             "custo_total=0 sem sinal de indisponibilidade (§3.4)"
         )
+        assert out.get("motivo_indisponivel") == "SEM_COTACAO_NA_UF"
 
     def test_composicao_com_preco_sinaliza_disponivel(self):
         db = _db_with_row(_composicao_row(custo_total=646.80))
