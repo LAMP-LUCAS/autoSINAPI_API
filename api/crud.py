@@ -61,7 +61,8 @@ def get_insumo_by_codigo(
     query = text(f"""
         SELECT i.codigo, i.descricao, i.unidade, i.classificacao, i.status, 
                p.preco_mediano, p.origem_preco,
-               i.created_at, i.updated_at, i.sinapi_versao
+               i.created_at, i.updated_at, i.sinapi_versao,
+               COALESCE(p.sinapi_versao, TO_CHAR(p.data_referencia, 'YYYY.MM')) AS versao_preco
         FROM {settings.TABLE_INSUMOS} AS i
         JOIN {settings.TABLE_PRECOS_INSUMOS} AS p ON i.codigo = p.insumo_codigo
         WHERE i.codigo = :codigo AND i.status = :status AND p.uf = :uf
@@ -375,7 +376,8 @@ def get_composicao_by_codigo(
     query = text(f"""
         SELECT c.codigo, c.descricao, c.unidade, c.grupo, c.status, 
                p.custo_total, p.percentual_mo,
-               c.created_at, c.updated_at, c.sinapi_versao
+               c.created_at, c.updated_at, c.sinapi_versao,
+               COALESCE(p.sinapi_versao, TO_CHAR(p.data_referencia, 'YYYY.MM')) AS versao_preco
         FROM {settings.TABLE_COMPOSICOES} AS c
         JOIN {settings.TABLE_CUSTOS_COMPOSICOES} AS p ON c.codigo = p.composicao_codigo
         WHERE c.codigo = :codigo AND c.status = :status AND p.uf = :uf

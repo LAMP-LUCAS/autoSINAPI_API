@@ -53,6 +53,11 @@ class Insumo(TraceabilityMixin):
     origem_preco: Optional[str] = None
     status: Optional[str] = None
     score: Optional[float] = None
+    versao_preco: Optional[str] = None
+    """§3.9: versão SINAPI do preço consultado em `data_referencia`
+    (`AAAA.MM`), lida da linha de preço com fallback pela própria data —
+    `sinapi_versao` (TraceabilityMixin) é a versão do CADASTRO, não do
+    preço aplicado."""
 
     class Config:
         from_attributes = True
@@ -70,6 +75,11 @@ class Composicao(TraceabilityMixin):
     preco_disponivel: Optional[bool] = None
     """§3.4: False quando não há preço publicado (`custo_total` 0/NULL) —
     o consumidor nunca deve tratar 0.0 silencioso como custo válido."""
+    versao_preco: Optional[str] = None
+    """§3.9: versão SINAPI do custo consultado em `data_referencia`
+    (`AAAA.MM`), lida da linha de preço com fallback pela própria data —
+    `sinapi_versao` (TraceabilityMixin) é a versão do CADASTRO, não do
+    preço aplicado."""
 
     class Config:
         from_attributes = True
