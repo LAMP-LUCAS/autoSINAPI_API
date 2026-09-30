@@ -73,6 +73,16 @@ class Settings(BaseSettings):
     ETL_LOOKBACK_MONTHS: int = 1
     ETL_STATES: str = "SP"
 
+    # --- Evento de conclusão de ETL (adapter neutro de saída, OPT-IN) ---
+    # Ausente/vazia → nenhum evento é publicado (comportamento padrão do
+    # repositório open source permanece inalterado). Quando configurada, a API
+    # faz POST JSON do evento `etl.completed` ao final de cada execução — o
+    # consumidor é definido exclusivamente por configuração de deploy, nunca
+    # por código (ver api/etl_events.py).
+    ETL_EVENT_WEBHOOK_URL: str | None = None
+    # Timeout curto: um consumidor lento nunca pode segurar a task de ETL.
+    ETL_EVENT_TIMEOUT: float = 5.0
+
     # --- Configurações de Segurança ---
     ALLOWED_ORIGINS: str = "*"  # Lista separada por vírgula. Ex: "https://demo.lamp.local,http://localhost:8080"
 

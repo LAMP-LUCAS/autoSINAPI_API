@@ -22,6 +22,9 @@ from celery import Celery
 from sqlalchemy import text
 import autosinapi
 
+from . import etl_events
+from .etl_events import ETLEvent
+
 logger = logging.getLogger("autosinapi.tasks")
 
 # Instancia o app Celery
@@ -29,12 +32,17 @@ celery_app = Celery('tasks')
 celery_app.config_from_object('api.celery_config')
 
 
-def run_populate_task(db_config: dict, sinapi_config: dict, lock_token: str = None) -> dict:
+def run_populate_task(db_config: dict, sinapi_config: dict, lock_token: str = None,
+                      task_id: str = None) -> dict:
     """Executa o ETL e libera o lock de posse ao final.
 
     Extraído do wrapper Celery para ser testável de forma isolada. A liberação
     do lock só ocorre se este processo for o dono (token confere), evitando
     corrida entre retentativas/workers distintos.
+
+    Ao final, publica o evento de domínio `etl.completed` (adapter neutro,
+    opt-in por `ETL_EVENT_WEBHOOK_URL`). A publicação é *best-effort*: falha
+    do consumidor nunca altera o resultado nem a liberação do lock.
     """
     year = sinapi_config.get('year')
     month = sinapi_config.get('month')
@@ -49,11 +57,31 @@ def run_populate_task(db_config: dict, sinapi_config: dict, lock_token: str = No
         )
         if result.get("status") == "success":
             _invalidate_caches()
+        _publish_etl_event(result, year, month, task_id)
         return result
     finally:
         # Libera o lock SOMENTE se este worker for o dono (token confere).
         from .populate_utils import release_populate_lock
         release_populate_lock(year, month, state, lock_token, sandbox=(mode_suffix == "sandbox"))
+
+
+def _publish_etl_event(result: dict, year, month, task_id: str = None) -> None:
+    """Publica `etl.completed` com o status terminal real da execução.
+
+    Defesa em profundidade: envolve o publicador para que até um bug nele
+    não comprometa o resultado do ETL nem a liberação do lock.
+    """
+    try:
+        event = ETLEvent(
+            year=int(year) if year is not None else 0,
+            month=int(month) if month is not None else 0,
+            status=str(result.get("status", "unknown")),
+            task_id=task_id,
+            records_inserted=result.get("records_inserted"),
+        )
+        etl_events.publish_etl_event(event)
+    except Exception as exc:  # noqa: BLE001 — nunca propagar para o ETL
+        logger.warning("Falha ao publicar etl.completed (ignorada): %s", exc)
 
 
 def _invalidate_caches():
@@ -72,9 +100,13 @@ def _invalidate_caches():
 def populate_sinapi_task(self, db_config: dict, sinapi_config: dict, lock_token: str = None):
     """
     Ponte Celery para run_populate_task. Mantém a política de retentativa
-    (específica do Celery) e delega a execução/liberação de lock.
+    (específica do Celery) e delega a execução/liberação de lock. O
+    `task_id` do Celery é repassado apenas como rastreio do evento de domínio.
     """
-    result = run_populate_task(db_config, sinapi_config, lock_token=lock_token)
+    result = run_populate_task(
+        db_config, sinapi_config, lock_token=lock_token,
+        task_id=getattr(self.request, "id", None),
+    )
 
     if result.get("status") == "failure":
         msg = result.get("message", "")

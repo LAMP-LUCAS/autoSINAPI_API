@@ -55,6 +55,57 @@ Implementações concretas de I/O.
 *   **Outbound Adapters:**
     *   **Postgres Adapter:** Gerenciado por [api/database.py](file:///z:/repos/autosinapi_api/api/database.py). Conecta a aplicação ao PostgreSQL.
     *   **Cache Adapter:** Gerenciado por [api/cache_utils.py](file:///z:/repos/autosinapi_api/api/cache_utils.py). Implementa o cliente Redis e o decorator `@cache_result` para encapsular a lógica de cache transparente.
+    *   **Event Adapter (opt-in):** Gerenciado por [api/etl_events.py](file:///z:/repos/autosinapi_api/api/etl_events.py). Publica o evento de domínio `etl.completed` via webhook quando `ETL_EVENT_WEBHOOK_URL` está configurada. **Best-effort**: falha do consumidor nunca comprometa o ETL. Ver §4.
+
+---
+
+## 4. Evento de Integração `etl.completed` (Adapter de Eventos)
+
+Contrato opcional para que consumidores externos reajam à conclusão de uma
+execução de ETL **sem que este repositório saiba quem são** — o consumidor é
+definido exclusivamente por configuração de deploy, nunca por código.
+
+### 4.1. Regras de domínio
+
+| Regra | Significado |
+|-------|-------------|
+| **Opt-in** | Sem `ETL_EVENT_WEBHOOK_URL`, o módulo é *no-op* (nenhuma saída de rede nova). Padrão do open source inalterado. |
+| **Payload neutro** | Somente vocabulário do contexto do ETL (competência, status, task, registros). Vocabulário de outros domínios (campanha, leads, clientes, entrega de mensagens, templates, tópicos) é **proibido** — assegurado por teste (`tests/test_etl_events.py`), atuando como *anti-corruption layer*. |
+| **Best-effort** | Timeout curto (`ETL_EVENT_TIMEOUT`, 5s) e erros engolidos com log. Publicar evento **nunca** altera o resultado da task nem a liberação do lock do ETL. |
+| **O ETL não decide** | Publica o status terminal real (`success` \| `failure` \| `no_data`); a regra de negócio de reagir a ele é de quem consome. |
+
+### 4.2. Contrato do payload
+
+```json
+{
+  "event": "etl.completed",
+  "source": "autosinapi",
+  "year": 2026,
+  "month": 8,
+  "status": "success",
+  "task_id": "50339024-2986-41ec-b401-4043d1305c34",
+  "records_inserted": 1619900,
+  "published_at": "2026-09-30T14:02:31.120000+00:00"
+}
+```
+
+| Campo | Tipo | Observação |
+|-------|------|-----------|
+| `event` | str | Sempre `etl.completed` (nome canônico do evento). |
+| `source` | str | Origem: `autosinapi`. |
+| `year` / `month` | int | Competência processada. |
+| `status` | str | `success` \| `failure` \| `no_data` (ou `unknown`). |
+| `task_id` | str\|null | ID da task orquestradora, quando houver. |
+| `records_inserted` | int\|null | Total de registros informado pelo ETL. |
+| `published_at` | str | Timestamp ISO-8601 UTC do disparo. |
+
+### 4.3. Configuração
+
+```bash
+# .env (opcional)
+ETL_EVENT_WEBHOOK_URL=http://consumidor.local:5678/webhook/etl-event
+ETL_EVENT_TIMEOUT=5.0
+```
 
 ---
 
