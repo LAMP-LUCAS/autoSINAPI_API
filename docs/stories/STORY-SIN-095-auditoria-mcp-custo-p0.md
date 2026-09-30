@@ -67,8 +67,23 @@ gate da casa `verify_mcp_audit_claims.py`. Causas-raiz provadas:
       Fix: fallback on-read calculando %MO do BOM (mesmo split de
       `get_composicao_produtividade`), com prioridade para valor armazenado;
       sem preço → continua `null`. GREEN ao vivo: `percentual_mo=4.0` (0<x<100).
-- [ ] **§3.8 lacuna SINAPI 2026-01/2026-02** → reprocesso com backup
-      (próximo passo; único P1 restante deste repo).
+- [x] **§3.8 lacuna SINAPI 2026-01/2026-02** (2026-09-30) — **causa-raiz =
+      defeito de código no ETL**, não dado perdido: `_discover_local_files`
+      recursava sem limite após extrair; zips NORMAIS (2026_03) são planos →
+      terminava; zips RETIFICADOS (`_Retificacao01`, como 2026-01/02)
+      extraem com pasta interna → `iterdir()` de nível 0 nunca achava a
+      Referência → `RecursionError` (~1000 frames) e o mês ficava sem dado.
+      RED `tests/test_etl_discover_local.py` (2 RED → 4 GREEN: retificado,
+      pasta já extraída, + pins de zip plano e vazio); fix: busca recursiva
+      (`rglob`) + extração com UMA nova varredura (sem recursão).
+      Reprocesso com **backup antes**: `backups/autosinapi/
+      sinapi_pre_reprocesso_202601_02_20260930.dump` (132M, TOC 241/32
+      TABLE DATA; `--exclude-table-data=public.vec_1024_bge_m3` — pg_dump
+      falha em `$libdir/vector`, dado derivado intocável pelo ETL).
+      Resultado: 2026-01 **1.541.206** e 2026-02 **1.588.775** registros
+      (9-10 tabelas), 27 UFs, `custos` 830.655/839.160, datas 17 → **19**.
+      Gate: **§3.8 OK** — "ausentes na janela corrente: nenhuma".
+      Suíte: `305 passed` (4 novos).
 
 Suíte: `301 passed` + 9 novos; 2 falhas `test_post_schemas` **pré-existentes**
 (falam com Redis/Postgres reais indisponíveis no host — idênticas com stash).
