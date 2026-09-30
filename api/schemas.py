@@ -107,6 +107,8 @@ class SearchMeta(BaseModel):
     page_size: Optional[int] = None
     total: Optional[int] = None
     relaxed: bool = False
+    # STORY-MCP-007/S-03: resultado vazio é resposta explícita (`motivo`).
+    motivo: Optional[str] = None
 
 class UsadoEmItem(BaseModel):
     composicao_codigo: int

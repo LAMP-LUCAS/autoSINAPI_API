@@ -44,16 +44,30 @@ def test_cache_hit_prevents_db_call_abc(mock_db, mock_redis):
     referencia = "2025-09"
     regime = "NAO_DESONERADO"
 
-    mock_db.execute.return_value.fetchall.return_value = [
-        Mock(_mapping={"codigo": 100, "descricao": "Insumo A", "unidade": "KG", "custo_impacto_total": 500.0, "percentual_individual": 100.0, "percentual_acumulado": 100.0, "classe_abc": "A"})
-    ]
+    # STORY-MCP-007/S-01: a função agora VALIDA que os códigos são composições
+    # ativas antes de agregar (resultado parcial nunca em silêncio). A primeira
+    # consulta é a de existência; a segunda é a curva.
+    def _execute(query, *args, **kwargs):
+        sql = str(query)
+        res = Mock()
+        if "FROM composicoes" in sql and "WITH RECURSIVE" not in sql:
+            res.fetchall.return_value = [
+                Mock(_mapping={"codigo": 100}), Mock(_mapping={"codigo": 200}),
+            ]
+        else:
+            res.fetchall.return_value = [
+                Mock(_mapping={"codigo": 100, "descricao": "Insumo A", "unidade": "KG", "custo_impacto_total": 500.0, "percentual_individual": 100.0, "percentual_acumulado": 100.0, "classe_abc": "A"})
+            ]
+        return res
+
+    mock_db.execute.side_effect = _execute
 
     crud.get_abc_curve_for_composicoes(mock_db, codigos, uf, referencia, regime)
-    assert mock_db.execute.call_count == 1
+    assert mock_db.execute.call_count == 2
 
     mock_redis.get.return_value = '[{"codigo": 100}]'
     crud.get_abc_curve_for_composicoes(mock_db, codigos, uf, referencia, regime)
-    assert mock_db.execute.call_count == 1
+    assert mock_db.execute.call_count == 2
 
 def test_cache_miss_executes_sql(mock_db, mock_redis):
     """Cache miss (sem valor) executa SQL."""

@@ -32,6 +32,7 @@ def build_meta(
     page_size: Optional[int] = None,
     total: Optional[int] = None,
     relaxed: bool = False,
+    motivo: Optional[str] = None,
 ) -> dict:
     return {
         "providers": list(providers),
@@ -41,6 +42,7 @@ def build_meta(
         "page_size": page_size,
         "total": total,
         "relaxed": relaxed,
+        "motivo": motivo,
     }
 
 
@@ -156,10 +158,19 @@ def unified_search(
         except Exception:
             dym = None
 
+    # STORY-MCP-007/S-03: resultado vazio é uma RESPOSTA explícita, nunca silêncio.
+    # `motivo` está sempre presente quando não há item; `did_you_mean` aparece
+    # quando existe termo próximo (trigram, ADR 004). Sem `motivo`, o agente
+    # não distingue "termo inexistente" de "filtro restritivo demais".
+    motivo = None
+    if total == 0:
+        motivo = "SEM_RESULTADOS_PARA_O_TERMO" if not dym else "SEM_RESULTADOS_TERMO_PROXIMO_ENCONTRADO"
+
     page_no = (skip // limit) + 1 if limit else 1
     meta = build_meta(providers, degraded, did_you_mean=dym,
                       page=page_no, page_size=limit, total=total,
-                      relaxed=bool(result.get("relaxed", False)))
+                      relaxed=bool(result.get("relaxed", False)),
+                      motivo=motivo)
     # total é o total textual; o RRF apenas reordena dentro da página →
     # mantém contrato (total >= len(items)).
     return {"items": items, "total": total, "meta": meta}

@@ -724,10 +724,42 @@ def get_composicao_bom(
     result = db.execute(query, {"codigo": codigo, "uf": uf.upper(), "start_date": start_date, "end_date": end_date, "regime": regime.upper()}).fetchall()
     return [dict(r._mapping) for r in result]
 
+def _exigir_composicoes(db: Session, codigos: List[int]) -> List[int]:
+    """Garante que TODO código pedido é composição ATIVA — ou erra nomeando os
+    órfãos (STORY-MCP-007/S-01, ADR 010).
+
+    Antes: a curva ABC recebia a lista, os códigos que não eram composição
+    sumiam no `IN` e a resposta 200 trazia só o subconjunto — o agente acreditava
+    estar vendo a curva de todos os códigos pedidos.
+    """
+    from . import validation
+
+    pedidos = list(dict.fromkeys(int(c) for c in codigos))
+    if not pedidos:
+        raise validation.NaoResolvido(
+            "CODES_NAO_RESOLVIDOS",
+            "Nenhum código informado: informe ao menos uma composição.",
+            codigos_nao_resolvidos=[],
+        )
+    ativos = _composicoes_ativas(db, pedidos)
+    orfaos = [c for c in pedidos if c not in ativos]
+    if orfaos:
+        raise validation.NaoResolvido(
+            "CODES_NAO_RESOLVIDOS",
+            f"{len(orfaos)} de {len(pedidos)} código(s) não é/são composição(ões) "
+            f"ativa(s) no SINAPI: {orfaos}. A curva ABC é calculada sobre "
+            "composições — para insumos use sinapi_get_insumo/precos_uf.",
+            codigos_nao_resolvidos=orfaos,
+            codigos_consultados=pedidos,
+        )
+    return pedidos
+
+
 @cache_result(ttl=86400)
 def get_abc_curve_for_composicoes(
     db: Session, codigos: List[int], uf: str, data_referencia: str, regime: str, top_n: int = 50
 ) -> List[dict]:
+    codigos = _exigir_composicoes(db, codigos)
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
 WITH RECURSIVE composicao_completa (item_codigo, tipo_item, coeficiente_total, nivel) AS (
@@ -918,6 +950,7 @@ def get_abc_by_classificacao(
     Calcula a Curva ABC agrupada por classificação de insumo,
     agregando todos os insumos de mesma categoria.
     """
+    codigos = _exigir_composicoes(db, codigos)
     start_date, end_date = _get_date_range(data_referencia)
     query = text(f"""
     WITH RECURSIVE composicao_completa (item_codigo, tipo_item, coeficiente_total, nivel) AS (
@@ -1148,9 +1181,9 @@ def get_audit_events(
     item. A tabela de auditoria por item é `manutencoes_historico`, que registra
     ativacoes/desativacoes e retificacoes por data de referencia.
     """
-    tipo = (tipo_item or "").upper()
-    if tipo not in ("INSUMO", "COMPOSICAO"):
-        tipo = tipo_item  # mantém o valor original; o filtro simplesmente não casará
+    # SIN-094: o ETL grava 'COMPOSICAO' e 'COMPOSIÇÃO'; a comparação direta
+    # perdia as linhas com cedilha (24k no banco). Reusa a normalização canônica.
+    tipo_norm = _normalize_tipo_item(tipo_item)
 
     query_str = f"""
         SELECT
@@ -1168,9 +1201,10 @@ def get_audit_events(
             descricao_item AS motivo_manutencao,
             created_at
         FROM {settings.TABLE_MANUTENCOES_HISTORICO}
-        WHERE item_codigo = :codigo AND tipo_item = :tipo
+        WHERE item_codigo = :codigo
+          AND {_SQL_TIPO_NORM.format(col='tipo_item')} = :tipo_norm
     """
-    params = {"codigo": codigo, "tipo": tipo}
+    params = {"codigo": codigo, "tipo_norm": tipo_norm}
 
     if data_referencia:
         query_str += " AND TO_CHAR(data_referencia, 'YYYY-MM') = :data_ref"
@@ -1181,6 +1215,49 @@ def get_audit_events(
     query = text(query_str)
     result = db.execute(query, params).fetchall()
     return [dict(r._mapping) for r in result]
+
+
+@cache_result(ttl=86400)
+def get_ultima_data_auditoria(db: Session, tipo_item: str, codigo: int) -> Optional[str]:
+    """Última competência (AAAA-MM) com evento de auditoria do item.
+
+    STORY-MCP-007/S-04: o 404 de `get_audit` era genérico ("não encontrado"),
+    fazendo o agente concluir que o item não existe — quando o único evento
+    era de outra competência (4750 → 2021-12). O erro agora nomeia a data real
+    (fail-loud, ADR 010).
+    """
+    tipo_norm = _normalize_tipo_item(tipo_item)
+    query = text(f"""
+        SELECT TO_CHAR(MAX(data_referencia), 'YYYY-MM') AS ultima
+        FROM {settings.TABLE_MANUTENCOES_HISTORICO}
+        WHERE item_codigo = :codigo
+          AND {_SQL_TIPO_NORM.format(col='tipo_item')} = :tipo_norm
+    """)
+    row = db.execute(query, {"codigo": codigo, "tipo_norm": tipo_norm}).first()
+    if row is None:
+        return None
+    ultima = dict(row._mapping).get("ultima")
+    if ultima is None:
+        return None
+    # `TO_CHAR(...,'YYYY-MM')` já devolve AAAA-MM; o corte mantém o contrato
+    # mesmo se o driver devolver `date` (YYYY-MM-DD).
+    return str(ultima)[:7]
+
+
+def _composicoes_ativas(db: Session, codigos: List[int]) -> set:
+    """Códigos que existem como composição ATIVA no cadastro."""
+    if not codigos:
+        return set()
+    query = text(f"""
+        SELECT codigo FROM {settings.TABLE_COMPOSICOES}
+        WHERE codigo IN :codigos AND status = :status
+    """)
+    rows = db.execute(query, {
+        "codigos": tuple(codigos),
+        "status": settings.DEFAULT_ITEM_STATUS,
+    }).fetchall()
+    return {int(r._mapping["codigo"]) for r in rows}
+
 
 def get_cenario_spread(
     db: Session, codigos: List[int], uf: str, data_referencia: str, regime: str

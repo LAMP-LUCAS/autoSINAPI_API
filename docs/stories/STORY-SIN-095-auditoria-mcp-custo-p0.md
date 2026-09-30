@@ -112,6 +112,48 @@ Suíte: `301 passed` + 9 novos; 2 falhas `test_post_schemas` **pré-existentes**
       pré-existentes, zero regressão); ao vivo 4/4 (2026-07 carimbada,
       2026-04 fallback, insumo + composição); gate 29/29; `8c3dadb`.
 
+## Fase 6 (STORY-MCP-007, certificação funcional) — Onda 1: fail-loud (GREEN 2026-09-30)
+
+Origem: certificação funcional via MCP (41 tools, 3 endpoints). Cada item foi
+**medido ao vivo antes do fix** — o relatório misturava defeito real e falso
+positivo (veredito na story da casa, `docs/projects/STORY-MCP-007`).
+
+- [x] **§S-01 curva ABC descarta código órfão em silêncio** — RED
+      `claim_curva_abc_integridade` (`[99803, 4750]` devolvia só a curva de
+      99803 com `isError:false`; 4750 é **insumo**, não composição). Falso
+      positivo desmentido na medição: multi-código funciona (`[99803]`→9 itens,
+      `[99803,98676]`→**13**), `percentual_individual` soma **100,0** e `6111` é
+      insumo legítimo de 99803 (a curva é por insumo). Fix:
+      `crud._exigir_composicoes` valida que **todo** código é composição ATIVA e
+      levanta `NaoResolvido` nomeando os órfãos (404, ADR 010) — nas duas curvas
+      (por insumo e por classificação). RED unitário
+      `tests/test_validacao_entrada_f6.py` (7 falhas → 18 passed).
+- [x] **§S-03 entrada inválida respondia lista vazia** — `uf:"XX"` e
+      `data_referencia:"2030-01"` davam `200 {"items": []}`. Fix: novo módulo
+      `api/validation.py` (BR_UFS, `validar_uf`, `validar_data_referencia` com a
+      competência máxima, `validar_tipo_item`), aplicado nas rotas de leitura e
+      busca; `EntradaInvalida`/`NaoResolvido` viram **erro nomeado** com
+      `detail` string prefixado pelo código (`INVALID_UF: …`) + a lista das 27
+      siglas. Busca vazia deixa de ser silêncio: `meta.motivo` +
+      `did_you_mean` quando existe termo próximo (ADR 004).
+- [x] **§S-04 `get_audit` "não encontrado" em item válido** — o insumo 4750 tem
+      **um** evento, em 2021-12; o filtro `data_referencia=2026-08` zerava.
+      Fix: `crud.get_ultima_data_auditoria` + erro 404 que **nomeia a última
+      competência com evento**; `get_audit_events` passou a usar
+      `_SQL_TIPO_NORM` (o banco grava `COMPOSICAO` **e** `COMPOSIÇÃO` — 24k
+      linhas com cedilha eram perdidas).
+- [x] **§S-05 rótulo do erro dizia "insumo" para consulta de composição** — fix
+      no `resolver` do MCP (rota canônica
+      `/bi/item/{tipo}/{codigo}/onde-usado` + `_de()` com o artigo certo: "da
+      composição") e a tool `onde_usado` passou a enviar o tipo **no path**; a
+      rota legada segue ativa e **deprecada**.
+
+Guarda: o `client.py` do MCP passou a repassar o `detail` da API no 404/400 (sem
+isso o S-04 não chegava ao agente) e o gate parou de truncar a mensagem de erro
+em 220 chars (cortava exatamente a informação asserida). **Gate 33/33 (exit=0),
+duas execuções; suíte API 348 passed** (2 falhas `test_post_schemas`
+pré-existentes — exigem Redis/Postgres, rodam no container).
+
 ## Tasks (TDD) — P0 concluídos
 
 - [x] Fase 0: RED comportamental via `automation/scripts/verify_mcp_docs_facts.py`

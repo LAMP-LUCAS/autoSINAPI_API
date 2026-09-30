@@ -40,6 +40,8 @@ from dateutil.relativedelta import relativedelta
 
 from . import crud, schemas, config, populate_utils
 from . import search as search_pipeline
+from . import validation
+from .validation import EntradaInvalida, NaoResolvido, BR_UFS
 from .database import get_db
 from .tasks import populate_sinapi_task
 from .cache_utils import redis_client as cache_redis
@@ -571,6 +573,7 @@ def read_insumo_by_codigo(
     """
     Obtém um insumo específico e seu preço para um determinado contexto.
     """
+    validation.validar_contexto(uf, data_referencia, max_ref=_get_max_data_referencia_cached(db))
     db_insumo = crud.get_insumo_by_codigo(db, codigo=codigo, uf=uf, data_referencia=data_referencia, regime=regime)
     if db_insumo is None:
         raise HTTPException(status_code=404, detail="Insumo não encontrado para os filtros especificados.")
@@ -603,6 +606,7 @@ def search_insumos(
     seus preços para um determinado contexto. Opcionalmente filtra por
     classificação.
     """
+    validation.validar_contexto(uf, data_referencia, max_ref=_get_max_data_referencia_cached(db))
     result = crud.search_insumos_by_descricao(db, q=q, uf=uf, data_referencia=data_referencia, regime=regime, skip=skip, limit=limit, classificacao=classificacao)
     return _search_response(result, meta)
 
@@ -620,6 +624,7 @@ def read_composicao_by_codigo(
     """
     Obtém uma composição específica e seu custo para um determinado contexto.
     """
+    validation.validar_contexto(uf, data_referencia, max_ref=_get_max_data_referencia_cached(db))
     db_composicao = crud.get_composicao_by_codigo(db, codigo=codigo, uf=uf, data_referencia=data_referencia, regime=regime)
     if db_composicao is None:
         raise HTTPException(status_code=404, detail="Composição não encontrada para os filtros especificados.")
@@ -639,6 +644,7 @@ def search_composicoes(
     Busca composições pela descrição (ranking trigram) ou código exato e retorna
     seus custos para um determinado contexto. Opcionalmente filtra por grupo.
     """
+    validation.validar_contexto(uf, data_referencia, max_ref=_get_max_data_referencia_cached(db))
     result = crud.search_composicoes_by_descricao(db, q=q, uf=uf, data_referencia=data_referencia, regime=regime, skip=skip, limit=limit, grupo=grupo)
     return _search_response(result, meta)
 
@@ -665,6 +671,7 @@ def search_unified(
     `meta.did_you_mean` quando não há resultados. Itens de insumo incluem
     `usado_em` (top 5 composições que o utilizam).
     """
+    validation.validar_contexto(uf, data_referencia, max_ref=_get_max_data_referencia_cached(db))
     return search_pipeline.unified_search(
         db, q=q, uf=uf, data_referencia=data_referencia, regime=regime,
         tipo=tipo, sort=sort, vector=vector, skip=skip, limit=limit,
@@ -815,6 +822,53 @@ def get_item_maintenance_history(
     return manutencoes
 
 
+def _rotulo_tipo(tipo_item: str) -> str:
+    """Nome do item no gênero certo — o erro nunca diz 'insumo' para uma
+    consulta de composição (STORY-MCP-007/S-05)."""
+    return "composição" if str(tipo_item).lower() == "composicao" else "insumo"
+
+
+def _tipo_item_path(tipo_item: str) -> str:
+    """Valida o `tipo_item` vindo do path (ADR 010 — erro nomeado, não 404)."""
+    return validation.validar_tipo_item(tipo_item)
+
+
+@app.exception_handler(EntradaInvalida)
+async def _entrada_invalida_handler(_request: Request, exc: EntradaInvalida):
+    """Qualquer `EntradaInvalida` (400/404) vira `detail` string com código.
+
+    O `detail` é texto prefixado pelo código (`INVALID_UF: ...`) porque é o
+    formato que **todos** os clientes do ecossistema já sabem ler — inclusive
+    o `client.py` dos três MCPs e o `correlation_id` segue no envelope MCP.
+    """
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+@app.get("/api/v1/public/bi/item/{tipo_item}/{codigo}/onde-usado", response_model=List[schemas.InsumoOndeUsado], tags=["tier_2", "Business Intelligence"], summary="Obter composições que usam o item", response_description="Query reversa: composições que utilizam o item (em qualquer nível), para insumo OU composição.", responses=_PUBLIC_VALIDATED)
+def get_item_where_used(
+    tipo_item: str = Path(..., description="Tipo do item: 'insumo' ou 'composicao'."),
+    codigo: int = Path(..., description="Código do item."),
+    db: Session = Depends(get_db)
+):
+    """
+    Query reversa tipada (S-05): o **path** carrega o tipo, então o MCP nomeia o
+    item certo no erro. A rota legada `/bi/insumo/{codigo}/onde-usado` continua
+    ativa (compatibilidade) mas é deprecada — ela recebia `tipo_item` por query
+    param e rotulava tudo como "insumo".
+    """
+    tipo = _tipo_item_path(tipo_item)
+    result = crud.get_onde_usado(db, codigo=codigo, tipo_item=tipo)
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"ONDE_USADO_NOT_FOUND: nenhuma composição usa {_rotulo_tipo(tipo)} "
+                f"{codigo} no SINAPI carregado."
+            ),
+        )
+    return result
+
+
 @app.get("/api/v1/public/bi/audit/{tipo_item}/{codigo}", response_model=List[schemas.AuditEvent], tags=["tier_2", "Business Intelligence"], summary="Obter trilha de auditoria do item", response_description="Trilha de auditoria completa do item (retificações, status, estrutura).", responses=_PUBLIC_VALIDATED)
 def get_audit_trail(
     tipo_item: str = Path(..., description="Tipo do item: 'insumo' ou 'composicao'"),
@@ -830,7 +884,23 @@ def get_audit_trail(
         raise HTTPException(status_code=400, detail="Tipo de item inválido. Use 'insumo' ou 'composicao'.")
     audit_events = crud.get_audit_events(db, tipo_item=tipo_item, codigo=codigo, data_referencia=data_referencia)
     if not audit_events:
-        raise HTTPException(status_code=404, detail="Nenhum evento de auditoria encontrado para este item.")
+        # STORY-MCP-007/S-04 + ADR 010: erro que NOMEIA a última competência com
+        # evento. Antes dizia só "não encontrado" e o agente concluía que o item
+        # não existia — quando o único evento era de outra data (4750 → 2021-12).
+        ultima = crud.get_ultima_data_auditoria(db, tipo_item=tipo_item, codigo=codigo)
+        if ultima and data_referencia and ultima != data_referencia:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"AUDIT_NOT_FOUND: nenhum evento de auditoria para {_rotulo_tipo(tipo_item)} "
+                    f"{codigo} em {data_referencia}. A última competência com evento é "
+                    f"{ultima} — chame sem `data_referencia` para ver a trilha completa."
+                ),
+            )
+        raise HTTPException(
+            status_code=404,
+            detail=f"AUDIT_NOT_FOUND: nenhum evento de auditoria registrado para {_rotulo_tipo(tipo_item)} {codigo}.",
+        )
     return audit_events
 
 @app.post("/api/v1/public/bi/curva-abc/por-classificacao", response_model=List[schemas.AbcPorClassificacao], tags=["tier_2", "Business Intelligence"], summary="Calcular curva ABC por classificação", response_description="Curva ABC agregada por classificação de insumo.", responses=_PUBLIC_NOT_FOUND)
@@ -917,21 +987,17 @@ def get_composition_productivity(
         raise HTTPException(status_code=404, detail="Não foi possível calcular a produtividade para esta composição.")
     return result
 
-@app.get("/api/v1/public/bi/insumo/{codigo}/onde-usado", response_model=List[schemas.InsumoOndeUsado], tags=["tier_2", "Business Intelligence"], summary="Obter composições que usam o insumo", response_description="Query reversa: composições que utilizam o item (em qualquer nível).", responses=_PUBLIC_VALIDATED)
+@app.get("/api/v1/public/bi/insumo/{codigo}/onde-usado", response_model=List[schemas.InsumoOndeUsado], tags=["tier_2", "Business Intelligence"], summary="Obter composições que usam o insumo (DEPRECADO)", deprecated=True, response_description="Query reversa por insumo. **Use** `/bi/item/{tipo_item}/{codigo}/onde-usado` — esta rota rotula todo erro como 'insumo' (S-05).", responses=_PUBLIC_VALIDATED)
 def get_insumo_where_used(
     codigo: int,
     tipo_item: str = Query("insumo", description="Tipo do item: 'insumo' ou 'composicao'"),
     db: Session = Depends(get_db)
 ):
     """
-    Query reversa: encontra todas as composições (em qualquer nível) que utilizam
-    um determinado insumo ou subcomposição. Útil para análise de impacto.
+    Query reversa legada (mantida por compatibilidade; o parâmetro `tipo_item`
+    chega por query string). Delega à rota canônica.
     """
-    if tipo_item not in ['insumo', 'composicao']:
-        raise HTTPException(status_code=400, detail="Tipo de item inválido. Use 'insumo' ou 'composicao'.")
-    result = crud.get_onde_usado(db, codigo=codigo, tipo_item=tipo_item)
-    if not result:
-        raise HTTPException(status_code=404, detail="Nenhuma composição encontrada que utilize este item.")
+    return get_item_where_used(tipo_item=tipo_item, codigo=codigo, db=db)
     return result
 
 @app.get("/api/v1/public/bi/cenario", response_model=schemas.CenarioResponse, tags=["tier_2", "Business Intelligence"], summary="Calcular cenário orçamentário consolidado", response_description="Cenário 'PowerBI do SINAPI': composições, total do BOM, Curva ABC, spread regional e tendências.", responses=_PUBLIC_VALIDATED)
