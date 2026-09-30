@@ -148,11 +148,30 @@ class TestSearchUnified:
             crud.search_unified(db, "alvenaria", "SP", "2025-09", "NAO_DESONERADO",
                                 tipo="composicao", sort="relevance", skip=0, limit=10)
             sql = str(db.execute.call_args[0][0])
-        # t.classificacao NÃO existe em composicoes.
+        # t.classificacao NÃO existe em composicoes — a faceta paralela é
+        # t.grupo, usada também para popular `classificacao` (§3.10).
         assert "t.grupo AS grupo" in sql
-        assert "null::text AS classificacao" in sql.replace("NULL", "null")
+        assert "t.grupo AS classificacao" in sql
         assert "t.classificacao" not in sql
         assert "t.grupo" in sql
+
+    def test_composicao_branch_popula_classificacao_a_partir_do_grupo(self):
+        """§3.10: `classificacao` não pode sair `null` no caminho de composição.
+
+        A casa trata classificacao (insumos) e grupo (composições) como
+        facetas paralelas — ver endpoint BI `agrupar_por` ("classificacao"
+        (Insumos), "grupo" (Composições)) e `sinapi_filters`, que cataloga
+        `classificacoes` e `grupos`. O item unificado deve espelhar o grupo
+        na faceta `classificacao` em vez de emitir literal NULL.
+        """
+        db = self._db()
+        with patch.object(crud, "_trigram_enabled", return_value=True):
+            crud.search_unified(db, "alvenaria", "SP", "2025-09", "NAO_DESONERADO",
+                                tipo="composicao", sort="relevance", skip=0, limit=10)
+            sql = str(db.execute.call_args[0][0])
+        assert "t.grupo AS classificacao" in sql
+        assert "null::text AS classificacao" not in sql.replace("NULL", "null")
+        assert "t.classificacao" not in sql  # coluna não existe na tabela
 
 
 class TestDidYouMean:

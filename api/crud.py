@@ -543,14 +543,19 @@ def search_unified(
         params["grupo"] = grupo
 
     def _branch(item_table, price_table, join_col, tipo_label, val_col, categoria, filtro):
-        # STORY-SRC-002 fix: cada branch emite apenas as colunas que existem na
-        # tabela-fonte; a coluna do outro tipo vira literal NULL (o CASE com
-        # coluna inexistente causa UndefinedColumn mesmo em branch falso).
+        # STORY-SRC-002 fix: cada branch emite apenas as colunas que existem
+        # na tabela-fonte; a coluna do outro tipo vira literal NULL (o CASE
+        # com coluna inexistente causa UndefinedColumn mesmo em branch falso).
         if tipo_label == 'insumo':
             col_classif = 't.classificacao AS classificacao'
             col_grupo = 'null::text AS grupo'
         else:
-            col_classif = 'null::text AS classificacao'
+            # §3.10: composicoes não tem coluna `classificacao` — a faceta
+            # paralela é `grupo` (BI agrupar_por: "classificacao" (Insumos),
+            # "grupo" (Composições); sinapi_filters cataloga as duas). Espelha
+            # o grupo em `classificacao` para o item não sair com null
+            # silencioso (auditoria MCP custo §3.10).
+            col_classif = 't.grupo AS classificacao'
             col_grupo = 't.grupo AS grupo'
         return f"""
         SELECT t.codigo, t.descricao, t.unidade, '{tipo_label}' AS tipo,

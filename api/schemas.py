@@ -115,6 +115,10 @@ class UnifiedSearchItem(BaseModel):
     tipo: str
     valor: Optional[float] = None
     classificacao: Optional[str] = None
+    """§3.10: faceta de classificação do item — insumo: natureza de origem
+    (MATERIAL, EQUIPAMENTO (AQUISIÇÃO)...); composição: seu `grupo` (faceta
+    paralela, catalogada por `sinapi_filters.grupos`). O filtro de query
+    `classificacao` segue escopado aos insumos (para composições use `grupo`)."""
     grupo: Optional[str] = None
     score: Optional[float] = None
     usado_em: Optional[UsadoEm] = None

@@ -655,7 +655,7 @@ def search_unified(
     sort: str = Query("relevance", description="Ordenação: `relevance`, `price_asc`, `price_desc`, `name`.", examples={"exemplo": {"value": "relevance"}}),
     vector: str = Query("off", description="Camada vetorial: `auto`, `off` ou `<model_slug>`. Nesta fase é degradada (Fase 4).", examples={"exemplo": {"value": "off"}}),
     grupo: str = Query(None, description="Filtrar composições por grupo. Ex: ESTRUTURA"),
-    classificacao: str = Query(None, description="Filtrar insumos por classificação. Ex: CONCRETO"),
+    classificacao: str = Query(None, description="Filtrar insumos por classificação (faceta dos insumos; para filtrar composições use `grupo` — nas respostas a composição espelha seu `grupo` em `classificacao`, §3.10). Ex: CONCRETO"),
     skip: int = 0, limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db)
 ):
     """
