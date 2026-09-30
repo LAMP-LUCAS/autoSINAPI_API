@@ -67,6 +67,9 @@ class Composicao(TraceabilityMixin):
     percentual_mo: Optional[float] = None
     status: Optional[str] = None
     score: Optional[float] = None
+    preco_disponivel: Optional[bool] = None
+    """§3.4: False quando não há preço publicado (`custo_total` 0/NULL) —
+    o consumidor nunca deve tratar 0.0 silencioso como custo válido."""
 
     class Config:
         from_attributes = True

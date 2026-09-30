@@ -386,7 +386,30 @@ def get_composicao_by_codigo(
         "codigo": codigo, "uf": uf.upper(), "start_date": start_date, "end_date": end_date,
         "regime": regime.upper(), "status": settings.DEFAULT_ITEM_STATUS
     }).first()
-    return result._mapping if result else None
+    if result is None:
+        return None
+    data = dict(result._mapping)
+    # §3.4: composição sem preço sinaliza indisponibilidade — `custo_total=0`
+    # com `status='ATIVO'` nunca pode passar como "custo válido" sem sinal.
+    custo = data.get("custo_total")
+    try:
+        data["preco_disponivel"] = custo is not None and float(custo) > 0
+    except (TypeError, ValueError):
+        data["preco_disponivel"] = False
+    # §3.6: `percentual_mo` é NULL em 100% das linhas (o ETL nunca gravou a
+    # coluna da migration 005) → calcula o %MO a partir do BOM, usando o
+    # mesmo split de `get_composicao_produtividade`. Valor armazenado tem
+    # prioridade (quando o ETL passar a gravar, não há BOM extra).
+    if data.get("percentual_mo") is None and data["preco_disponivel"]:
+        prod = get_composicao_produtividade(
+            db, codigo=codigo, uf=uf, data_referencia=data_referencia, regime=regime
+        ) or {}
+        total = float(prod.get("total_custo") or 0)
+        if total > 0:
+            data["percentual_mo"] = round(
+                float(prod.get("mao_de_obra") or 0) / total * 100, 2
+            )
+    return data
 
 @cache_result(ttl=3600)
 def search_composicoes_by_descricao(
@@ -834,9 +857,18 @@ def get_composicao_man_hours(db: Session, codigo: int):
     WHERE cc.tipo_item = 'INSUMO' AND UPPER(i.unidade) = 'H';
     """)
     result = db.execute(query, {"codigo": codigo}).first()
-    if result is None or result.total_hora_homem is None:
-        return {'total_hora_homem': 0.0}
-    return dict(result._mapping)
+    if result is not None and result.total_hora_homem is not None:
+        return dict(result._mapping)
+    # §3.5: a query acima só enxerga COMPOSIÇÕES — um insumo HORISTA
+    # (unidade 'H') devolvia 0.0 silencioso. O insumo horista É 1 hora-homem
+    # por construção (ex.: 1213 CARPINTEIRO… HORISTA → 1.0 HH).
+    unidade = db.execute(
+        text(f"SELECT unidade FROM {settings.TABLE_INSUMOS} WHERE codigo = :codigo"),
+        {"codigo": codigo},
+    ).scalar()
+    if unidade and str(unidade).strip().upper() == "H":
+        return {"total_hora_homem": 1.0}
+    return {"total_hora_homem": 0.0}
 
 @cache_result(ttl=86400)
 def get_candidatos_otimizacao(
