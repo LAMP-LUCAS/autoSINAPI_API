@@ -88,6 +88,30 @@ gate da casa `verify_mcp_audit_claims.py`. Causas-raiz provadas:
 Suíte: `301 passed` + 9 novos; 2 falhas `test_post_schemas` **pré-existentes**
 (falam com Redis/Postgres reais indisponíveis no host — idênticas com stash).
 
+## Fase 5 (P2) — §3.10 e §3.9 (GREEN 2026-09-30)
+
+- [x] **§3.10 `classificacao: null` no caminho de composição** — RED
+      `tests/test_search_unified.py` (2 falhas: teste novo
+      `test_composicao_branch_popula_classificacao_a_partir_do_grupo` + teste
+      que codificava `null::text`) → fix em `crud.search_unified`: a branch
+      composição espelha `t.grupo` em `classificacao` (faceta paralela — BI
+      agrupar por classificacao/group; `sinapi_filters` já cataloga as 8
+      classificações) em vez de literal `NULL`; documentação do param com
+      cross-ref ao `grupo`. GREEN: busca "cimento/SP" com 0 nulls; gate
+      `59193e3`.
+- [x] **§3.9 versão do preço aplicado por `data_referencia`** — RED
+      `tests/test_versao_preco_39.py` (3 falhas → 5 passed) → fix: campos
+      `versao_preco` em `schemas.Insumo`/`schemas.Composicao` + SQL de
+      detalhe com `COALESCE(p.sinapi_versao, TO_CHAR(p.data_referencia,
+      'YYYY.MM')) AS versao_preco` — a versão vem da **linha de preço**
+      consultada, com fallback pela própria `data_referencia` quando o ETL
+      não carimbou a coluna (meses NULL: 2026-03/04, 2025-10..12; decisão
+      2026-09-30: "SINAPI fornece versão e coluna `data_referencia` já
+      existe"); `sinapi_versao` do **cadastro** segue exposto (traceability).
+      GREEN: suíte **311 passed** (2 falhas `test_post_schemas`
+      pré-existentes, zero regressão); ao vivo 4/4 (2026-07 carimbada,
+      2026-04 fallback, insumo + composição); gate 29/29; `8c3dadb`.
+
 ## Tasks (TDD) — P0 concluídos
 
 - [x] Fase 0: RED comportamental via `automation/scripts/verify_mcp_docs_facts.py`
@@ -110,6 +134,7 @@ Suíte: `301 passed` + 9 novos; 2 falhas `test_post_schemas` **pré-existentes**
 
 ## Fora de escopo (registrado)
 
-- §3.9 · §3.10 → **P2**.
-- §3.8 lacuna 2026-01/02 → P1 (reprocesso com backup) — único pendente deste repo.
-- Descriptions/notes do MCP wrapper (`autosinapi_mcp`) → plano do repo irmão.
+- §3.9 · §3.10 → P2 — **concluídos na Fase 5 (2026-09-30)**, ver seção acima.
+- §3.8 lacuna 2026-01/02 → P1 (reprocesso com backup) — concluído (§3.8 OK).
+- Descriptions/notes do MCP wrapper (`autosinapi_mcp`) → plano do repo irmão
+  (§2.2 guard + §2.1 resources concluídos na Fase 5).
