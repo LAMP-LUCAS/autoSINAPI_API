@@ -25,6 +25,16 @@ from .admin_auth import verify_admin_token
 logger = logging.getLogger("autosinapi.admin")
 router = APIRouter(tags=["Admin"], dependencies=[Depends(verify_admin_token)])
 
+# Exclui tráfego de clientes marcados `is_test` (E2E/integração — migration 018)
+# de QUALQUER agregação sobre usage_logs: relatórios de uso, dashboard e as
+# futuras faturas só podem ver tráfego real. `NOT COALESCE(..., false)` é
+# essencial: linhas sem client_id (anon) viram NULL na subquery e DEVEM
+# continuar contando — só `is_test=true` sai.
+_EXCLUDE_TEST_USAGE = """
+        AND NOT COALESCE(
+            (SELECT c.is_test FROM saas.clients c WHERE c.id = saas.usage_logs.client_id),
+            false)"""
+
 
 def _row(r):
     out = {}
@@ -48,7 +58,7 @@ def _row(r):
 
 @router.get("/api/v1/admin/dashboard", summary="KPIs do painel CMS/CRM")
 def dashboard(db: Session = Depends(get_saas_db)):
-    kpis = db.execute(text("""
+    kpis = db.execute(text(f"""
         SELECT
           (SELECT COUNT(*) FROM saas.clients WHERE deleted_at IS NULL)                   AS clients_total,
           (SELECT COUNT(*) FROM saas.clients WHERE deleted_at IS NULL AND is_test)       AS clients_test,
@@ -62,8 +72,10 @@ def dashboard(db: Session = Depends(get_saas_db)):
           (SELECT COUNT(*) FROM saas.leads WHERE deleted_at IS NULL AND is_test)          AS leads_test,
           (SELECT COUNT(*) FROM saas.leads WHERE status = 'new' AND deleted_at IS NULL)   AS leads_new,
           (SELECT COUNT(*) FROM saas.coupons WHERE active = TRUE)                        AS coupons_active,
-          (SELECT COUNT(*) FROM saas.usage_logs WHERE requested_at >= NOW() - INTERVAL '24 hours') AS usage_24h,
-          (SELECT COUNT(*) FROM saas.usage_logs WHERE requested_at >= NOW() - INTERVAL '30 days') AS usage_30d
+          (SELECT COUNT(*) FROM saas.usage_logs WHERE requested_at >= NOW() - INTERVAL '24 hours'
+             {_EXCLUDE_TEST_USAGE}) AS usage_24h,
+          (SELECT COUNT(*) FROM saas.usage_logs WHERE requested_at >= NOW() - INTERVAL '30 days'
+             {_EXCLUDE_TEST_USAGE}) AS usage_30d
     """)).mappings().first()
 
     by_plan = db.execute(text("""
@@ -423,7 +435,7 @@ def list_products(db: Session = Depends(get_saas_db)):
 
 @router.get("/api/v1/admin/products/usage", summary="Uso por produto (metrificação)")
 def products_usage(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_saas_db)):
-    rows = db.execute(text("""
+    rows = db.execute(text(f"""
         SELECT CASE
             WHEN endpoint LIKE '/v1/cub%' OR endpoint LIKE '/cub/%'
               OR endpoint LIKE '/v1/padroes%' OR endpoint LIKE '/v1/sinduscons%'
@@ -436,6 +448,7 @@ def products_usage(days: int = Query(30, ge=1, le=365), db: Session = Depends(ge
         COUNT(DISTINCT client_id) AS clientes
         FROM saas.usage_logs
         WHERE requested_at >= NOW() - make_interval(days => :days)
+        {_EXCLUDE_TEST_USAGE}
         GROUP BY 1 ORDER BY requests DESC
     """), {"days": days}).mappings().all()
     return {"items": [_row(r) for r in rows]}
@@ -446,7 +459,7 @@ def products_usage(days: int = Query(30, ge=1, le=365), db: Session = Depends(ge
 @router.get("/api/v1/admin/usage/summary", summary="Resumo de uso da API")
 def usage_summary(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_saas_db)):
     params = {"days": days}
-    totals = db.execute(text("""
+    totals = db.execute(text(f"""
         SELECT COUNT(*) AS requests,
                COUNT(*) FILTER (WHERE cache_status='HIT') AS cache_hits,
                COUNT(DISTINCT client_id) AS clients,
@@ -454,29 +467,34 @@ def usage_summary(days: int = Query(30, ge=1, le=365), db: Session = Depends(get
                ROUND(AVG(latency_ms),2) AS avg_latency,
                ROUND(100.0 * COUNT(*) FILTER (WHERE cache_status='HIT') / GREATEST(COUNT(*),1), 1) AS cache_hit_pct
         FROM saas.usage_logs WHERE requested_at >= NOW() - make_interval(days => :days)
+        {_EXCLUDE_TEST_USAGE}
     """), params).mappings().first()
 
-    by_plan = db.execute(text("""
+    by_plan = db.execute(text(f"""
         SELECT COALESCE(plan_slug,'(anon)') AS plan_slug, COUNT(*) AS requests
         FROM saas.usage_logs WHERE requested_at >= NOW() - make_interval(days => :days)
+        {_EXCLUDE_TEST_USAGE}
         GROUP BY 1 ORDER BY requests DESC
     """), params).mappings().all()
 
-    by_status = db.execute(text("""
+    by_status = db.execute(text(f"""
         SELECT status_code, COUNT(*) AS total
         FROM saas.usage_logs WHERE requested_at >= NOW() - make_interval(days => :days)
+        {_EXCLUDE_TEST_USAGE}
         GROUP BY 1 ORDER BY total DESC
     """), params).mappings().all()
 
-    top_endpoints = db.execute(text("""
+    top_endpoints = db.execute(text(f"""
         SELECT endpoint, COUNT(*) AS requests, ROUND(AVG(latency_ms),2) AS avg_latency
         FROM saas.usage_logs WHERE requested_at >= NOW() - make_interval(days => :days)
+        {_EXCLUDE_TEST_USAGE}
         GROUP BY endpoint ORDER BY requests DESC LIMIT 20
     """), params).mappings().all()
 
-    by_day = db.execute(text("""
+    by_day = db.execute(text(f"""
         SELECT date_trunc('day', requested_at) AS day, COUNT(*) AS requests
         FROM saas.usage_logs WHERE requested_at >= NOW() - make_interval(days => :days)
+        {_EXCLUDE_TEST_USAGE}
         GROUP BY 1 ORDER BY 1
     """), params).mappings().all()
 

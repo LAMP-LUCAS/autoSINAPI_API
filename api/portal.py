@@ -144,6 +144,120 @@ def portal_me(
     )
 
 
+def _lookup_own_key(x_api_key: str, db: Session):
+    """Resolve a chave apresentada contra o hash (bcrypt via crypt()).
+
+    Retorna a linha (key_id/client_id/subscription_id/key_prefix/key_status)
+    ou None — a comparação é SEMPRE por hash, nunca por plaintext (REGRA 1).
+    """
+    return db.execute(
+        text("""
+            SELECT k.id as key_id, k.client_id::text as client_id, k.subscription_id,
+                   k.status as key_status, k.key_prefix
+            FROM saas.api_keys k
+            WHERE k.key_hash = crypt(:x_api_key, k.key_hash)
+        """),
+        {"x_api_key": x_api_key},
+    ).mappings().first()
+
+
+@router.get(
+    "/api/v1/public/portal/me/api-key",
+    summary="Consultar a chave de API do próprio assinante",
+    response_description="Prefixo e status da chave apresentada (sem plaintext)",
+    response_model=schemas.PortalApiKeyResponse,
+    responses={**_AUTH_RESPONSES, **_RATE_LIMIT_RESPONSE},
+)
+def portal_api_key(
+    x_api_key: Optional[str] = Header(None, alias="X-API-KEY"),
+    db: Session = Depends(get_saas_db),
+):
+    """Introspecção BYOK (STORY-MCP-008): identifica qual chave está em uso.
+
+    Nunca devolve a chave em claro; apenas o prefixo (para conferência no
+    painel/OpenWebUI) e o status. Sem efeitos colaterais — não escreve.
+    """
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="Header X-API-KEY obrigatório")
+    key_row = _lookup_own_key(x_api_key, db)
+    if not key_row:
+        raise HTTPException(status_code=401, detail="API key inválida ou não encontrada")
+    return schemas.PortalApiKeyResponse(
+        key_prefix=key_row["key_prefix"] or "",
+        status=key_row["key_status"],
+        rotated=False,
+        api_key=None,
+    )
+
+
+@router.post(
+    "/api/v1/public/portal/me/api-key",
+    summary="Rotacionar a chave de API do próprio assinante",
+    response_description="Nova chave em claro (retorno único) + prefixo da nova",
+    response_model=schemas.PortalApiKeyResponse,
+    responses={**_AUTH_RESPONSES, **_RATE_LIMIT_RESPONSE},
+)
+def rotate_api_key(
+    response: Response,
+    x_api_key: Optional[str] = Header(None, alias="X-API-KEY"),
+    db: Session = Depends(get_saas_db),
+):
+    """Rotação self-service (STORY-MCP-008).
+
+    Prova de posse = autenticação com a chave atual. Na mesma transação:
+    revoga a anterior, emite a nova (bcrypt) na MESMA assinatura, registra
+    `client_events.api_key_rotated` e devolve o plaintext UMA única vez.
+    Chave revogada não rotaciona (401) — recuperação é via admin/CRM.
+    """
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="Header X-API-KEY obrigatório")
+    key_row = _lookup_own_key(x_api_key, db)
+    if not key_row:
+        raise HTTPException(status_code=401, detail="API key inválida ou não encontrada")
+    if key_row["key_status"] != "active":
+        raise HTTPException(status_code=401, detail="API key não está ativa")
+
+    import json
+
+    key_value = f"autosinapi_{secrets.token_hex(16)}"
+    key_prefix = key_value[11:19]
+
+    db.execute(
+        text("""
+            UPDATE saas.api_keys SET status = 'revoked', deleted_at = NOW()
+            WHERE id = :kid AND status = 'active'
+        """),
+        {"kid": key_row["key_id"]},
+    )
+    new_id = db.execute(
+        text("""
+            INSERT INTO saas.api_keys (client_id, subscription_id, key_prefix, key_hash, status)
+            VALUES (:cid, :sid, :prefix, crypt(:kv, gen_salt('bf')), 'active')
+            RETURNING id
+        """),
+        {"cid": key_row["client_id"], "sid": key_row["subscription_id"],
+         "prefix": key_prefix, "kv": key_value},
+    ).scalar_one()
+    db.execute(
+        text("""
+            INSERT INTO saas.client_events (client_id, event_type, actor, details, occurred_at)
+            VALUES (:cid, :et, :actor, CAST(:details AS jsonb), NOW())
+        """),
+        {"cid": key_row["client_id"], "et": "api_key_rotated", "actor": "portal",
+         "details": json.dumps({"subscription_id": str(key_row["subscription_id"]),
+                                "key_prefix": key_prefix, "key_id": str(new_id)})},
+    )
+    db.commit()
+
+    response.headers["Cache-Control"] = "no-store"
+    return schemas.PortalApiKeyResponse(
+        key_prefix=key_prefix,
+        status="active",
+        rotated=True,
+        api_key=key_value,
+    )
+
+
 @router.post(
     "/api/v1/public/portal/message-dispatcher-sso",
     summary="Gerar handoff SSO para o MessageDispatcher (assinante Business)",

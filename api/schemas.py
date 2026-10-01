@@ -384,3 +384,17 @@ class PortalResponse(BaseModel):
     quota: QuotaInfo
     features: dict
     links: PortalLinks
+
+
+class PortalApiKeyResponse(BaseModel):
+    """Self-service de chave (BYOK — STORY-MCP-008).
+
+    GET: introspecção — só `key_prefix`/`status`, nunca plaintext.
+    POST: rotação — `api_key` contém a NOVA chave em claro, devolvida uma
+    única vez (a anterior é revogada na mesma transação).
+    """
+
+    key_prefix: str
+    status: str
+    rotated: bool = False
+    api_key: Optional[str] = None
