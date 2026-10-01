@@ -157,4 +157,21 @@ Sua contribuição é a força motriz do open source.
 - **Sugira Melhorias:** Tem uma ideia para uma nova funcionalidade de BI? Vamos conversar!
 - **Envie Código:** Siga nosso [**Guia de Contribuição (`CONTRIBUTING.md`)**](./CONTRIBUTING.md) e ajude a construir o futuro da análise de custos.
 
+---
+
+### 🛠️ Mantendo o Projeto
+
+Vai **modificar** a API? Comece pelo **[📘 Manual de Manutenção](docs/MANUAL_DE_MANUTENCAO.md)** —
+doutrina do repo, mapa do código, contrato de resposta, a evolução da auditoria
+(item por item), receitas e armadilhas conhecidas.
+
+Documentação de apoio:
+
+| Documento | Para quê |
+|---|---|
+| [**Manual de manutenção**](docs/MANUAL_DE_MANUTENCAO.md) | Como mudar: doutrina, receitas, armadilhas, ETL/submódulo |
+| [**ADRs**](docs/adrs/) | Decisões que moldam o código (busca, tipagem, fail-loud) |
+| [**Spec rules**](docs/spec-rules/) | Regras de contrato público (prevalecem sobre atalhos) |
+| [**Story da auditoria**](docs/stories/STORY-SIN-095-auditoria-mcp-custo-p0.md) | O que foi corrigido e por quê (comportamento) |
+
 **Junte-se a nós na missão de modernizar o acesso a dados na construção civil!**
