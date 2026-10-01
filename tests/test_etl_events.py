@@ -18,7 +18,10 @@ Regras de domínio asseguradas por estes testes (DDD + não-acoplamento):
 
 import json
 import os
+import random
 import sys
+import urllib.error
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -266,3 +269,174 @@ class TestIntegracaoRunPopulateTask:
                                 {"year": 2026, "month": 8, "state": "SP"},
                                 lock_token="tok")
         spy.assert_not_called()
+
+
+DEFAULT_TIMEOUT_TEST = 5.0
+
+
+def _erro(mensagem):
+    return urllib.error.URLError(mensagem)
+
+
+def _sequencia(itens):
+    """Fake do ``_post_json``: devolve bool ou LEVANTA a exceção da fila.
+
+    O contrato real é "retorna 2xx OU levanta" — devolver a exceção (um objeto
+    truthy) faria a retentativa nunca acontecer, que é exatamente o defeito que
+    estes testes existem para pegar.
+    """
+    fila = iter(itens)
+
+    def fake(url, payload, timeout):
+        item = next(fila)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+    return fake
+
+
+class TestRetry:
+    """Retentativa: o evento é best-effort, mas UMA falha de rede não é o fim.
+
+    Sem retry, uma indisponibilidade de 2 segundos do consumidor (ou o
+    instante exato de um deploy do n8n) faz a competência populada ficar sem
+    anúncio e sem nenhum sinal. O retry curto e limitado resolve a janela
+    comum sem criar carga: 3 tentativas, ~1s/4s, com jitter.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _opt_in_ligado(self, monkeypatch):
+        """O retry só existe com o opt-in ligado — liga por padrão nos testes."""
+        monkeypatch.setattr(etl_events.settings, "ETL_EVENT_WEBHOOK_URL",
+                            "http://consumidor/webhook")
+
+    def _evento(self):
+        return ETLEvent(year=2026, month=8, status="success", task_id="t1")
+
+    def test_publica_de_primeira_quando_consumidor_esta_de_pe(self, monkeypatch):
+        timeouts = []
+        monkeypatch.setattr(etl_events, "_post_json",
+                            _sequencia([True]))
+        monkeypatch.setattr(etl_events, "_sleep",
+                            lambda s: pytest.fail("não há espera quando a 1ª funciona"))
+        assert etl_events.publish_etl_event(self._evento()) is True
+
+    def test_retenta_apos_falha_de_rede(self, monkeypatch):
+        monkeypatch.setattr(etl_events, "_post_json", _sequencia(
+            [_erro("connection refused"), _erro("connection refused"), True]))
+        esperas = []
+        monkeypatch.setattr(etl_events, "_sleep", lambda s: esperas.append(s))
+        assert etl_events.publish_etl_event(self._evento()) is True
+        assert len(esperas) == 2, "uma espera entre cada tentativa"
+        assert esperas == sorted(esperas), "esperas crescentes (backoff)"
+
+    def test_esperas_sao_curtas(self, monkeypatch):
+        """O ETL não pode ficar preso: a soma das esperas é da ordem de segundos."""
+        monkeypatch.setattr(etl_events, "_post_json",
+                            _sequencia([_erro("x"), _erro("x"), _erro("x")]))
+        esperas = []
+        monkeypatch.setattr(etl_events, "_sleep", lambda s: esperas.append(s))
+        assert etl_events.publish_etl_event(self._evento()) is False
+        assert sum(esperas) <= 20, f"backoff longo demais: {esperas}"
+
+    def test_numero_de_tentativas_e_limitado(self, monkeypatch):
+        chamadas = []
+        monkeypatch.setattr(etl_events, "_post_json", _sequencia([_erro("500")] * 9))
+        monkeypatch.setattr(etl_events, "_sleep", lambda s: None)
+        assert etl_events.publish_etl_event(self._evento()) is False
+
+    def test_erro_inesperado_tambem_e_retentado(self, monkeypatch):
+        """`RuntimeError` no meio do POST não pode escapar nem abortar a sequência."""
+        monkeypatch.setattr(etl_events, "_post_json",
+                            _sequencia([RuntimeError("bug"), True]))
+        monkeypatch.setattr(etl_events, "_sleep", lambda s: None)
+        assert etl_events.publish_etl_event(self._evento()) is True
+
+    def test_timeout_por_tentativa_nao_cresce(self, monkeypatch):
+        """Retry com timeout curto: 3x5s ainda é melhor que evento perdido."""
+        timeouts = []
+
+        def com_timeout(url, payload, timeout):
+            timeouts.append(timeout)
+            if len(timeouts) == 1:
+                raise _erro("x")
+            return True
+
+        monkeypatch.setattr(etl_events, "_post_json", com_timeout)
+        monkeypatch.setattr(etl_events, "_sleep", lambda s: None)
+        etl_events.publish_etl_event(self._evento())
+        assert timeouts == [DEFAULT_TIMEOUT_TEST, DEFAULT_TIMEOUT_TEST]
+
+    def test_jitter_existe_para_nao_sincronizar_dois_etls(self, monkeypatch):
+        """Duas execuções que falharam juntas não devem retentar no mesmo ms."""
+        monkeypatch.setattr(random, "uniform", lambda a, b: b)
+        esperas = []
+        monkeypatch.setattr(etl_events, "_post_json",
+                            _sequencia([_erro("x"), _erro("x"), True]))
+        monkeypatch.setattr(etl_events, "_sleep", lambda s: esperas.append(s))
+        etl_events.publish_etl_event(self._evento())
+        assert len(esperas) == 2
+        assert esperas[-1] > esperas[0], "com jitter, cada espera sobe um pouco"
+
+    def test_opt_in_desligado_nao_tenta_nada(self, monkeypatch):
+        monkeypatch.setattr(etl_events.settings, "ETL_EVENT_WEBHOOK_URL", None)
+        _called = []
+        monkeypatch.setattr(etl_events, "_post_json",
+                            lambda *a, **k: _called.append(a) or True)
+        assert etl_events.publish_etl_event(self._evento()) is False
+        assert not _called
+
+    def test_retry_desligavel_por_configuracao(self, monkeypatch):
+        """Quem não quer esperar (ex.: teste de carga) desliga e volta ao 1x."""
+        monkeypatch.setattr(etl_events.settings, "ETL_EVENT_TENTATIVAS", 1)
+        chamadas = []
+
+        def recusa(url, payload, timeout):
+            chamadas.append(1)
+            return False          # HTTP não-2xx
+
+        monkeypatch.setattr(etl_events, "_post_json", recusa)
+        monkeypatch.setattr(etl_events, "_sleep", lambda s: None)
+        assert etl_events.publish_etl_event(self._evento()) is False
+        assert len(chamadas) == 1
+
+    def test_erro_final_registrado_em_log(self, monkeypatch, caplog):
+        monkeypatch.setattr(etl_events, "_post_json", _sequencia([_erro("500")] * 3))
+        monkeypatch.setattr(etl_events, "_sleep", lambda s: None)
+        with caplog.at_level("WARNING", logger="autosinapi.etl_events"):
+            etl_events.publish_etl_event(self._evento())
+        assert any("não publicado" in r.message for r in caplog.records)
+        assert any("3 tentativa" in r.message or "tentativa" in r.message.lower()
+                   for r in caplog.records), "log deve dizer que esgotou as tentativas"
+
+
+class TestContratoDoRetry:
+    """O retry não pode mudar o contrato do evento (mesmo payload, mesmo nome)."""
+
+    @pytest.fixture(autouse=True)
+    def _opt_in_ligado(self, monkeypatch):
+        monkeypatch.setattr(etl_events.settings, "ETL_EVENT_WEBHOOK_URL",
+                            "http://consumidor/webhook")
+
+    def test_payload_identico_entre_tentativas(self, monkeypatch):
+        payloads = []
+
+        def fake(url, payload, timeout):
+            payloads.append(dict(payload))
+            if len(payloads) == 1:
+                raise _erro("x")
+            return True
+
+        monkeypatch.setattr(etl_events, "_post_json", fake)
+        monkeypatch.setattr(etl_events, "_sleep", lambda s: None)
+        etl_events.publish_etl_event(ETLEvent(year=2026, month=8, status="success",
+                                             task_id="t1"))
+        assert len(payloads) == 2
+        assert payloads[0] == payloads[1], "a retentativa reenvia o MESMO evento"
+        assert payloads[0]["event"] == "etl.completed"
+        assert payloads[0]["year"] == 2026
+
+    def test_jitter_nao_altera_o_contrato(self):
+        source = Path(etl_events.__file__).read_text(encoding="utf-8")
+        assert "jitter" in source.lower(), "o jitter precisa estar documentado no código"

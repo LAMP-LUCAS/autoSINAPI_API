@@ -29,6 +29,8 @@ from __future__ import annotations
 
 import json
 import logging
+import random
+import time
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass
@@ -44,6 +46,14 @@ ETL_EVENT_NAME = "etl.completed"
 
 #: Timeout padrão (segundos): consumidor lento não pode segurar o ETL.
 DEFAULT_TIMEOUT = 5.0
+
+#: Tentativas totais de publicação (a primeira + as retentativas).
+DEFAULT_TENTATIVAS = 3
+#: Espera base do backoff exponencial (segundos): 1s, 4s (jitter aplicado).
+DEFAULT_BACKOFF = 1.0
+#: Fração do backoff usada como jitter, para que dois ETL que falharam juntos
+#: não voltem a tentar no mesmo milissegundo.
+JITTER = 0.25
 
 
 @dataclass(frozen=True)
@@ -83,11 +93,35 @@ def _post_json(url: str, payload: dict, timeout: float) -> bool:
         return 200 <= int(status) < 300
 
 
+def _sleep(segundos: float) -> None:
+    """Ponto de indireção do backoff (testável sem esperar de verdade)."""
+    time.sleep(segundos)
+
+
+def _backoff(tentativa: int) -> float:
+    """Espera antes da tentativa ``tentativa`` (1-based), com jitter.
+
+    Exponencial 1s/4s/... mais um jitter de até 25%: evita que execuções que
+    falharam no mesmo instante (dois workers, dois ETL) voltem juntas.
+    """
+    base = DEFAULT_BACKOFF * (2 ** (tentativa - 1))
+    return base + random.uniform(0, base * JITTER)
+
+
 def publish_etl_event(event: ETLEvent) -> bool:
     """Publica o evento de conclusão do ETL no webhook configurado.
 
-    Retorna ``True`` quando publicado. Qualquer falha (rede, HTTP, payload)
-    é registrada em log e devolvida como ``False`` — **nunca** propaga.
+    Retenta em falha (rede/HTTP/inesperada) com backoff curto e limitado: uma
+    indisponibilidade de poucos segundos do consumidor não pode custar um
+    anúncio de competência. Ainda assim é *best-effort*:
+
+    * nunca propaga exceção — falha do consumidor não derruba a task de ETL;
+    * nunca segura o ETL por muito tempo — o pior caso é
+      ``3 x timeout + 1s + 4s`` de espera;
+    * o payload é idêntico em todas as tentativas (o contrato não muda por
+      causa de uma retentativa).
+
+    ``True`` quando publicado; ``False`` se todas as tentativas falharem.
     """
     url = (settings.ETL_EVENT_WEBHOOK_URL or "").strip()
     if not url:
@@ -95,25 +129,35 @@ def publish_etl_event(event: ETLEvent) -> bool:
         return False
 
     timeout = settings.ETL_EVENT_TIMEOUT or DEFAULT_TIMEOUT
-    try:
-        published = _post_json(url, event.to_payload(), timeout)
-    except (urllib.error.URLError, OSError, ValueError, TimeoutError) as exc:
-        logger.warning(
-            "etl.completed não publicado (consumidor indisponível): %s", exc
-        )
-        return False
-    except Exception as exc:  # defesa: consumidor nunca derruba o ETL
-        logger.warning("etl.completed não publicado (erro inesperado): %s", exc)
-        return False
+    tentativas = max(1, int(getattr(settings, "ETL_EVENT_TENTATIVAS",
+                                     DEFAULT_TENTATIVAS) or DEFAULT_TENTATIVAS))
+    payload = event.to_payload()
+    ultima_falha = ""
 
-    if published:
-        logger.info(
-            "etl.completed publicado: %04d-%02d status=%s task=%s",
-            event.year, event.month, event.status, event.task_id,
-        )
-    else:
-        logger.warning(
-            "etl.completed recusado pelo consumidor: %04d-%02d status=%s",
-            event.year, event.month, event.status,
-        )
-    return published
+    for tentativa in range(1, tentativas + 1):
+        if tentativa > 1:
+            _sleep(_backoff(tentativa - 1))
+        try:
+            if _post_json(url, payload, timeout):
+                if tentativa > 1:
+                    logger.info(
+                        "etl.completed publicado na tentativa %d: %04d-%02d status=%s",
+                        tentativa, event.year, event.month, event.status,
+                    )
+                else:
+                    logger.info(
+                        "etl.completed publicado: %04d-%02d status=%s task=%s",
+                        event.year, event.month, event.status, event.task_id,
+                    )
+                return True
+            ultima_falha = f"recusado (HTTP != 2xx) na tentativa {tentativa}"
+        except (urllib.error.URLError, OSError, ValueError, TimeoutError) as exc:
+            ultima_falha = f"consumidor indisponível ({exc}) na tentativa {tentativa}"
+        except Exception as exc:  # defesa: consumidor nunca derruba o ETL
+            ultima_falha = f"erro inesperado ({exc}) na tentativa {tentativa}"
+
+    logger.warning(
+        "etl.completed não publicado após %d tentativa(s): %s | %04d-%02d status=%s",
+        tentativas, ultima_falha, event.year, event.month, event.status,
+    )
+    return False

@@ -72,6 +72,7 @@ definido exclusivamente por configuração de deploy, nunca por código.
 | **Opt-in** | Sem `ETL_EVENT_WEBHOOK_URL`, o módulo é *no-op* (nenhuma saída de rede nova). Padrão do open source inalterado. |
 | **Payload neutro** | Somente vocabulário do contexto do ETL (competência, status, task, registros). Vocabulário de outros domínios (campanha, leads, clientes, entrega de mensagens, templates, tópicos) é **proibido** — assegurado por teste (`tests/test_etl_events.py`), atuando como *anti-corruption layer*. |
 | **Best-effort** | Timeout curto (`ETL_EVENT_TIMEOUT`, 5s) e erros engolidos com log. Publicar evento **nunca** altera o resultado da task nem a liberação do lock do ETL. |
+| **Best-effort ≠ sem retentativa** | Falha **de uma** tentativa não é o fim: até `ETL_EVENT_TENTATIVAS` (padrão 3) tentativas, com backoff `ETL_EVENT_BACKOFF` exponencial (1s, 4s) e jitter de 25% — a janela comum de indisponibilidade do consumidor (restart, deploy) é atravessada. `ETL_EVENT_TENTATIVAS=1` volta ao comportamento de 1x. O **payload é idêntico** em todas as tentativas (o contrato não muda por causa de uma retentativa) e o timeout por tentativa não cresce. Pior caso: `3 × timeout + 1s + 4s` de espera. |
 | **O ETL não decide** | Publica o status terminal real (`success` \| `failure` \| `no_data`); a regra de negócio de reagir a ele é de quem consome. |
 
 ### 4.2. Contrato do payload

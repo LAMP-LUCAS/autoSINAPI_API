@@ -82,6 +82,11 @@ class Settings(BaseSettings):
     ETL_EVENT_WEBHOOK_URL: str | None = None
     # Timeout curto: um consumidor lento nunca pode segurar a task de ETL.
     ETL_EVENT_TIMEOUT: float = 5.0
+    # Tentativas de publicação (1 = sem retry, comportamento histórico).
+    # 3 cobre a janela comum de indisponibilidade do consumidor (restart,
+    # deploy) sem transformar o ETL em cliente pesado: backoff 1s/4s.
+    ETL_EVENT_TENTATIVAS: int = 3
+    ETL_EVENT_BACKOFF: float = 1.0
 
     # --- Configurações de Segurança ---
     ALLOWED_ORIGINS: str = "*"  # Lista separada por vírgula. Ex: "https://demo.lamp.local,http://localhost:8080"
