@@ -51,6 +51,7 @@ from .legal_service import get_legal_document
 # Registro explícito: sem estes includes todas as rotas /api/v1/admin/*
 # respondem 404 e o login do SPA /admin falha (regressão 2026-09-23).
 from .admin_crm import router as admin_crm_router
+from .public_leads import router as public_leads_router
 from .admin_messages import router as admin_messages_router
 from .admin_portal import router as admin_portal_router
 import threading
@@ -243,6 +244,12 @@ if os.path.isdir(_data_dir):
     app.mount("/api/v1/public/data/geo", StaticFiles(directory=_data_dir), name="data")
 
 app.include_router(portal_router)
+
+# ── Porta de entrada do funil: captura de lead do portal ──────────────────────
+# Sem autenticação por desenho: quem preenche o formulário anônimo do site
+# não tem chave. A proteção é o conjunto anti-abuso do router (rate limit +
+# orçamento de e-mail por IP) e a validação de servidor.
+app.include_router(public_leads_router)
 
 # ── Painel CMS/CRM (SPEC-006): CRM, mensagens (MD) e portal/assinaturas ────
 app.include_router(admin_crm_router)

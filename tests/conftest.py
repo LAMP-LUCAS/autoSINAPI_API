@@ -8,3 +8,7 @@ valor inerte (nunca conecta de fato) apenas para permitir a coleção/import.
 import os
 
 os.environ.setdefault("DATABASE_URL", "postgresql://t:t@localhost:5432/t")
+
+# Fixtures da porta de entrada de leads (`test_public_leads.py`) ficam em
+# conftest_leads.py para não misturar com as compartilhadas da suíte.
+pytest_plugins = ["tests.conftest_leads"]
