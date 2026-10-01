@@ -86,9 +86,45 @@ def dashboard(db: Session = Depends(get_saas_db)):
         ORDER BY total DESC
     """)).mappings().all()
 
+    # ── Receita (Ação 4: preparar a validação do 1º pagamento real) ──────────
+    # MRR normaliza por `duration_days`: um plano anual de R$ 2.890 NÃO é
+    # R$ 2.890/mês. Sem essa normalização o MRR mente.
+    #
+    # `paid` distingue assinatura COM cobrança (mp_payment_id presente) de
+    # concessão/E2E/manual. As duas coisas são assinaturas `active`, mas só
+    # uma é receita — e é exatamente essa distinção que o 1º pagamento real
+    # precisa tornar visível. Sem `mp_payment_id` em nenhuma assinatura, MRR
+    # e MRR_paid são 0, e isso é o estado honesto do funil hoje.
+    revenue = db.execute(text(f"""
+        SELECT
+          COALESCE(SUM(CASE WHEN p.price_cents > 0
+               THEN p.price_cents * (30.0 / GREATEST(p.duration_days, 1)) / 100.0
+               ELSE 0 END), 0) AS mrr_brl,
+          COALESCE(SUM(CASE WHEN p.price_cents > 0 AND s.mp_payment_id IS NOT NULL
+               THEN p.price_cents * (30.0 / GREATEST(p.duration_days, 1)) / 100.0
+               ELSE 0 END), 0) AS mrr_paid_brl,
+          COALESCE(SUM(CASE WHEN p.price_cents > 0
+               THEN p.price_cents / 100.0 ELSE 0 END), 0) AS arr_brl,
+          COUNT(*) FILTER (WHERE p.price_cents > 0) AS subs_pagas,
+          COUNT(*) FILTER (WHERE p.price_cents > 0 AND s.mp_payment_id IS NOT NULL) AS subs_com_cobranca,
+          (SELECT COUNT(*) FROM saas.subscriptions
+            WHERE status = 'active' AND deleted_at IS NULL
+              AND current_period_end BETWEEN NOW() AND NOW() + INTERVAL '7 days') AS expira_7d,
+          (SELECT COUNT(*) FROM saas.subscriptions
+            WHERE status = 'active' AND deleted_at IS NULL
+              AND current_period_end BETWEEN NOW() AND NOW() + INTERVAL '30 days') AS expira_30d
+        FROM saas.subscriptions s
+        JOIN saas.plans p ON p.id = s.plan_id
+        JOIN saas.clients c ON c.id = s.client_id
+        WHERE s.status = 'active' AND s.deleted_at IS NULL
+          AND COALESCE(c.is_test, FALSE) = FALSE
+    """)).mappings().one()
+
     return {
         "kpis": _row(kpis),
         "subscriptions_by_plan": [_row(r) for r in by_plan],
+        "revenue": {k: (float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v)
+                    for k, v in dict(revenue).items()},
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -253,6 +289,161 @@ def list_leads(
 
     return {"total": total, "items": [_row(r) for r in rows],
             "by_source": [_row(r) for r in by_source]}
+
+
+# ── Atribuição de tráfego (Ação 3) ────────────────────────────────────────────
+# O portal coleta UTM/referrer/landing_path e o gateway grava em
+# `metadata.attribution` (não há colunas utm_* em saas.leads). Sem este
+# relatório, o traffic source de cada lead é irrecuperável depois do contato
+# e não há como distinguir "o footer converte" de "tráfego pago não converte".
+#
+# Leads sem atribuição (sem consentimento de marketing, ou anterior à coleta)
+# contam como `(direct)` — ausente não é zero.
+_ATTRIBUTION_BASE = """
+    FROM saas.leads
+    WHERE deleted_at IS NULL
+      AND COALESCE(is_test, FALSE) = FALSE
+"""
+
+
+@router.get("/api/v1/admin/leads/attribution", summary="Atribuição de tráfego dos leads")
+def lead_attribution(days: int = Query(90, ge=1, le=365), db: Session = Depends(get_saas_db)):
+    window = "created_at >= NOW() - (:days || ' days')::interval"
+    params = {"days": days}
+
+    def _agg(expr: str) -> list[dict]:
+        rows = db.execute(text(f"""
+            SELECT COALESCE(NULLIF({expr}, ''), '(direct)') AS origem,
+                   COUNT(*) AS leads,
+                   COUNT(*) FILTER (WHERE saas.leads.status = 'converted') AS convertidos
+            {_ATTRIBUTION_BASE} AND {window}
+            GROUP BY 1 ORDER BY leads DESC
+        """), params).mappings().all()
+        return [{"origem": r["origem"], "leads": r["leads"],
+                 "convertidos": r["convertidos"] or 0,
+                 "taxa_conversao_pct": round(100.0 * (r["convertidos"] or 0) / r["leads"], 1)
+                 if r["leads"] else None} for r in rows]
+
+    by_utm_source = _agg("metadata->'attribution'->>'utm_source'")
+    by_source = _agg("source")
+    by_landing = _agg("metadata->'attribution'->>'landing_path'")
+    totals = db.execute(text(f"""
+        SELECT COUNT(*) AS leads,
+               COUNT(*) FILTER (WHERE metadata ? 'attribution') AS com_atribuicao
+        {_ATTRIBUTION_BASE} AND {window}
+    """), params).mappings().one()
+
+    return {"days": days,
+            "totals": {"leads": totals["leads"],
+                       "com_atribuicao": totals["com_atribuicao"],
+                       "cobertura_pct": round(100.0 * totals["com_atribuicao"] / totals["leads"], 1)
+                       if totals["leads"] else None},
+            "by_utm_source": by_utm_source,
+            "by_source": by_source,
+            "by_landing_path": by_landing}
+
+
+# ── Retenção (Ação 5: preparar o que se valida com base de clientes) ────────
+# Tudo aqui é calculável HOJE com `subscriptions` + `usage_logs` — não depende
+# de nenhum cliente novo. São as métricas que a base pagante vai precisar
+# quando existir; agora elas ficam prontas e honestas (0 quando não há base).
+#
+# Regra de todo o bloco: denominador zero devolve None, nunca 0% (SR-DATA-01).
+# "0 clientes que cancelaram" com 0 clientes não é churn de 0% — é indefinido.
+_RETENTION_CLIENTS = """
+    FROM saas.subscriptions s
+    JOIN saas.clients c ON c.id = s.client_id
+    WHERE s.deleted_at IS NULL
+      AND COALESCE(c.is_test, FALSE) = FALSE
+"""
+
+# Mesma base, mais o plano: a fila de dunning precisa do nome do plano e filtra
+# por plano pago (`price_cents > 0`). O JOIN fica aqui porque a cláusula base
+# já contém o WHERE — acrescentar `JOIN` depois dela produziria SQL inválido.
+_RETENTION_PLANS = """
+    FROM saas.subscriptions s
+    JOIN saas.clients c ON c.id = s.client_id
+    JOIN saas.plans p ON p.id = s.plan_id
+    WHERE s.deleted_at IS NULL
+      AND COALESCE(c.is_test, FALSE) = FALSE
+"""
+
+
+def _ratio_pct(numerator: int, denominator: int) -> Optional[float]:
+    return round(100.0 * numerator / denominator, 1) if denominator else None
+
+
+@router.get("/api/v1/admin/retention", summary="Métricas de ativação e retenção")
+def retention(days: int = Query(90, ge=7, le=365), db: Session = Depends(get_saas_db)):
+    params = {"days": days}
+
+    # Ativação: assinaturas criadas na janela cuja chave gerou >= 10 chamadas
+    # em 7 dias. 10 é o piso de "usou de verdade" — uma chave criada e nunca
+    # chamada é onboarding abandoned, não cliente.
+    activation = db.execute(text(f"""
+        SELECT COUNT(*) AS assinaturas,
+               COUNT(*) FILTER (WHERE (
+                   SELECT COUNT(*) FROM saas.usage_logs u
+                    WHERE u.client_id = s.client_id
+                      AND u.requested_at >= s.created_at
+                      AND u.requested_at <= s.created_at + INTERVAL '7 days'
+                      AND NOT COALESCE((SELECT c2.is_test FROM saas.clients c2
+                                         WHERE c2.id = u.client_id), false)
+               ) >= 10) AS ativadas
+        {_RETENTION_CLIENTS}
+        AND s.created_at >= NOW() - (:days || ' days')::interval
+    """), params).mappings().one()
+
+    # Churn: canceladas no período sobre a base ativa no início do período.
+    churn = db.execute(text(f"""
+        SELECT
+          (SELECT COUNT(*) {_RETENTION_CLIENTS}
+             AND s.status = 'cancelled'
+             AND s.cancelled_at >= NOW() - (:days || ' days')::interval) AS canceladas,
+          (SELECT COUNT(*) {_RETENTION_CLIENTS}
+             AND s.status = 'active'
+             AND s.created_at < NOW() - (:days || ' days')::interval) AS base_periodo
+    """), params).mappings().one()
+
+    # Renovação: taxa = quem já VENCEU no período e continua `active`, sobre
+    # quem venceu no período. Contar quem ainda não venceu no numerador inflaria
+    # a taxa acima de 100% — o numerador tem de ser subconjunto do denominador.
+    renewal = db.execute(text(f"""
+        SELECT
+          (SELECT COUNT(*) {_RETENTION_CLIENTS}
+             AND s.status = 'active'
+             AND s.current_period_end >= NOW() - (:days || ' days')::interval
+             AND s.current_period_end < NOW()) AS renovadas,
+          (SELECT COUNT(*) {_RETENTION_CLIENTS}
+             AND s.current_period_end >= NOW() - (:days || ' days')::interval
+             AND s.current_period_end < NOW()) AS vencidas_no_periodo
+    """), params).mappings().one()
+
+    # Fila de dunning: o que vence nos próximos 7/30 dias. É a lista que a
+    # automação de cobrança vai consumir quando existir (ver plano Ação 5).
+    dunning = db.execute(text(f"""
+        SELECT c.email, c.name, p.name AS plano,
+               s.current_period_end, s.mp_payment_id IS NOT NULL AS com_cobranca
+        {_RETENTION_PLANS}
+        AND s.status = 'active'
+        AND p.price_cents > 0
+        AND s.current_period_end BETWEEN NOW() AND NOW() + INTERVAL '30 days'
+        ORDER BY s.current_period_end
+    """)).mappings().all()
+
+    subs, ativadas = activation["assinaturas"], activation["ativadas"]
+    canceladas, base = churn["canceladas"], churn["base_periodo"]
+    renovadas, vencidas = renewal["renovadas"], renewal["vencidas_no_periodo"]
+    return {
+        "days": days,
+        "ativacao": {"assinaturas": subs, "ativadas": ativadas,
+                     "taxa_ativacao_pct": _ratio_pct(ativadas, subs)},
+        "churn": {"canceladas": canceladas, "base_periodo": base,
+                  "churn_pct": _ratio_pct(canceladas, base)},
+        "renovacao": {"renovadas": renovadas, "vencidas_no_periodo": vencidas,
+                      "taxa_renovacao_pct": _ratio_pct(renovadas, vencidas)},
+        "dunning_30d": [_row(r) for r in dunning],
+    }
 
 
 @router.patch("/api/v1/admin/leads/{lead_id}", summary="Atualizar lead (funil)")

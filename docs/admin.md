@@ -83,6 +83,80 @@ Para mais detalhes e outras operações, consulte a [documentação oficial da A
 
 Além da população do banco de dados, a principal tarefa de gerenciamento exposta diretamente pela AutoSINAPI API é a que foi detalhada na Seção 1.2. Outras tarefas de gerenciamento de API, como controle de acesso, limitação de taxa e monitoramento, são configuradas e gerenciadas através do Kong Gateway.
 
+## 4. Leitura do Funil: Aquisição, Receita e Retenção (2026-10-01)
+
+Três endpoints acrescentados em `api/admin_crm.py`. Todos exigem o token admin
+e **excluem tráfego de teste** (`is_test`), como o resto do painel.
+
+### 4.1. `GET /api/v1/admin/leads/attribution?days=90`
+
+De onde vêm os leads. O portal grava `utm_*`, `referrer` e `landing_path` em
+`saas.leads.metadata.attribution` no momento da captura; sem isso o traffic
+source é irrecuperável depois do contato.
+
+```json
+{
+  "days": 90,
+  "totals": { "leads": 10, "com_atribuicao": 2, "cobertura_pct": 20.0 },
+  "by_utm_source":    [{ "origem": "(direct)", "leads": 8, "convertidos": 3, "taxa_conversao_pct": 37.5 }],
+  "by_source":        [ ... ],
+  "by_landing_path":  [ ... ]
+}
+```
+
+Leads sem atribuição — porque não consentiram com marketing, ou porque são
+anteriores à coleta — contam como **`(direct)`**. Ausência não é zero: sem
+isso, 8 de 10 leads sem UTM apareceriam como "origem desconhecida".
+
+`cobertura_pct` é a métrica a vigiar: com 20% de cobertura, o relatório ainda
+não sustenta decisão de canal.
+
+### 4.2. `GET /api/v1/admin/dashboard` → `revenue`
+
+```json
+{ "mrr_brl": 1035.07, "mrr_paid_brl": 0, "arr_brl": 6340.0,
+  "subs_pagas": 4, "subs_com_cobranca": 0, "expira_7d": 0, "expira_30d": 1 }
+```
+
+Dois cuidados, ambos verificados com dados:
+
+- **MRR normaliza por `duration_days`**: `business_anual` a R$ 2.890,00 não é
+  R$ 2.890/mês. Sem `price_cents * (30 / duration_days)` o MRR mente por um
+  fator de 12.
+- **`mrr_paid_brl` só conta assinatura com `mp_payment_id`**. As duas colunas
+  hoje divergem de propósito: as 4 assinaturas pagas ativas vieram de
+  concessão/E2E, sem cobrança. `mrr_paid_brl = 0` é o estado honesto do funil —
+  e é o número que o primeiro pagamento real precisa mover.
+
+### 4.3. `GET /api/v1/admin/retention?days=90`
+
+```json
+{ "ativacao": { "assinaturas": 15, "ativadas": 10, "taxa_ativacao_pct": 66.7 },
+  "churn":    { "canceladas": 0, "base_periodo": 0, "churn_pct": null },
+  "renovacao": { "renovadas": 0, "vencidas_no_periodo": 4, "taxa_renovacao_pct": 0.0 },
+  "dunning_30d": [ { "email": "...", "plano": "...", "current_period_end": "..." } ] }
+```
+
+- **Ativação** = assinatura com ≥10 chamadas em 7 dias. Abaixo disso é onboarding
+  abandonado, não cliente.
+- **Denominador zero devolve `null`, nunca `0%`** — `churn_pct: null` com
+  `base_periodo: 0` significa "ainda não há base para medir", não "churn zero"
+  (SR-DATA-01 / ADR-060).
+- **Renovação** conta no numerador apenas quem já venceu no período. Contar quem
+  ainda não venceu dava 275% — o numerador tem de ser subconjunto do
+  denominador.
+- **`dunning_30d`** é a fila que a automação de cobrança vai consumir quando
+  existir base pagante. Hoje ela não dispara nada (ver
+  `repos/saas-gateway/emails/registry.yaml`, templates marcados "sem gatilho").
+
+### Por que isto está preparado e não ativo
+
+NPS, dunning, win-back e open/click foram deliberadamente **não**
+implementados como disparo. Não há `mp_payment_id` em assinatura alguma: mandar
+"atualize seu cartão" ou "seu plano renova" para quem nunca foi cobrado seria
+ameaça de cobrança sem cliente. As métricas acima é o que se pode medir com
+honestidade hoje; o resto depende do primeiro pagamento real.
+
 ---
 
 Para explorar todos os endpoints disponíveis na API, incluindo os de consulta de dados, acesse a documentação interativa (Swagger UI) em `http://localhost:8000/docs` (assumindo que a API esteja rodando localmente na porta 8000).
