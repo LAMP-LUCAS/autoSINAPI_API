@@ -79,6 +79,27 @@ def limpar_cache():
     _cache.clear()
 
 
+def panorama_incc() -> tuple[str, str]:
+    """`(competência, destaque)` do INCC mais recente, para e-mail de promoção.
+
+    O template `gateway_promo_weekly` tem guarda (`{% if != blank %}`) e cai no
+    texto genérico sem esses campos — foi assim que a campanha antiga saiu sem
+    o número do índice. Aqui saem separados porque o template os usa em
+    posições diferentes.
+
+    Passa pelo mesmo `_incc()` dos relatórios: uma coleta só por execução.
+    """
+    linhas = _incc()
+    if not linhas or linhas[0].get("var_m") is None:
+        return "", ""
+    competencia = linhas[0]["data_id"].strftime("%m/%Y")
+    nota = nota_incc_atual(linhas) or ""
+    # `nota_incc_atual` junta tendência e competência; o destaque é a parte
+    # antes do rótulo, senão a competência apareceria duas vezes no e-mail.
+    destaque = nota.split("· competência")[0].strip() or nota
+    return competencia, destaque
+
+
 def incc_leitura(_c=None) -> Optional[Relatorio]:
     return montar_incc_leitura(_incc())
 
@@ -150,4 +171,4 @@ def implementados() -> tuple[str, ...]:
 
 
 __all__ = ["montar", "implementados", "nota_incc_atual", "limpar_cache",
-           "MONTADORES", "PENDENTES"]
+           "panorama_incc", "MONTADORES", "PENDENTES"]

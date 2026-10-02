@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import logging
+import os as _os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -43,8 +44,35 @@ router = APIRouter(tags=["Admin", "CRM"],
 
 TEMPLATE_ID = "f4444444-4444-4444-4444-444444444444"   # gateway_kb_digest
 TEMPLATE_ARTIGO = "66666666-6666-6666-6666-666666666666"  # gateway_lead_welcome
+
+# Templates de recuperação e promoção. Antes, os dois caíam no ramo "artigo" e
+# saíam com o assunto "— Knowledge Base" e as variáveis `article_*`: o corpo
+# promotional ficava errado sem dar erro nenhum.
+#
+# `gateway_winback` (f3333333) NÃO serve aqui: o registry o descreve como
+# win-back de **cancelamento**, com `plan_name` e `discount_days` — é conceito
+# de cliente. O slot é de **lead** que parou de usar, que é `reengagement`.
+TEMPLATE_REENGAGEMENT = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"  # gateway_reengagement
+TEMPLATE_PROMO = "99999999-9999-9999-9999-999999999999"        # gateway_promo_weekly
+
+# A oferta do winback é decisão comercial, não editorial — por isso fica
+# sobrescrevível por ambiente em vez de enterrada no texto. O default reproduz
+# o que o workflow antigo já enviava (30%, cupom VOLTEI30): o template
+# `gateway_reengagement` interpola `{{ desconto }}`/`{{ cupom }}` sem guarda, e
+# sem eles o e-mail sai como "Volte com % off ... use o cupom .".
+WINBACK_DESCONTO = _os.getenv("WINBACK_DESCONTO_PCT", "30")
+WINBACK_CUPOM = _os.getenv("WINBACK_CUPOM", "VOLTEI30")
+WINBACK_VALIDADE_DIAS = _os.getenv("WINBACK_VALIDADE_DIAS", "30")
+
 UNSUBSCRIBE = "https://autosinapi.mundoaec.com/preferencias"
 TOOLS_URL = "https://mundoaec.com/ferramentas"
+PORTAL_URL = "https://mundoaec.com"
+AGENDA_URL = "https://mundoaec.com/contato"
+
+# Quanto tempo um claim vale antes de outro worker poder tomá-lo. Uma só fonte:
+# `_reservar` decide quem reenvia e `orfaos` reporta quem ficou preso — se
+# divergirem, a varredura passa a accuse coisa que já se recuperou sozinha.
+JANELA_CLAIM_MINUTOS = 15
 
 # Janela de competência já anunciada: o que impede o relatório 9 de repetir.
 SQL_ULTIMA_COMPETENCIA = """
@@ -137,6 +165,58 @@ def leads_elegiveis(hoje: Optional[str] = Query(None),
             "total": len(rows)}
 
 
+@router.get("/api/v1/admin/crm/conteudo/orfaos",
+            summary="Passos presos em in_progress por worker que morreu")
+def listar_orfaos(minutos: int = Query(JANELA_CLAIM_MINUTOS, ge=1, le=1440),
+                  db: Session = Depends(get_saas_db)) -> dict:
+    """Varredura de passos órfãos — **observabilidade, não limpeza**.
+
+    Um passo em `in_progress` mais velho que a janela significa que o worker
+    morreu entre reservar e confirmar. Ele **se recupera sozinho**: `_reservar`
+    só recusa o claim quando `status = 'sent'` ou o claim tem menos de 15 min,
+    e `etapas_enviadas` só conta `sent` — então o passo volta a ser elegível e é
+    reenviado no próximo disparo.
+
+    Por isso este endpoint **não** reseta nada. Resetar pareceria jeito de
+    consertar, mas só mudaria o mesmo estado que o reclaim já resolve, e
+    esconderia o sintoma que importa: se há passo preso, há workflow quebrado
+    entre a reserva e a confirmação, e alguém precisa saber.
+
+    Reenvio não duplica e-mail: a `idempotency_key` é `crm:{step}:{lead_id}`,
+    determinística, e o MessageDispatcher devolve `duplicate` sem reenfileirar.
+    """
+    rows = db.execute(text("""
+        SELECT n.lead_id, lower(l.email) AS email, n.step, n.claimed_at,
+               n.claimed_by, n.attempts, n.error,
+               EXTRACT(MINUTE FROM (now() - n.claimed_at))::int AS minutos,
+               l.status AS lead_status
+          FROM saas.nurture_state n
+          JOIN saas.leads l ON l.id = n.lead_id AND l.deleted_at IS NULL
+         WHERE n.status = 'in_progress'
+           AND n.claimed_at < now() - make_interval(mins => :minutos)
+         ORDER BY n.claimed_at
+    """), {"minutos": minutos}).mappings().all()
+
+    orfaos = [{
+        "lead_id": str(r["lead_id"]), "email": r["email"], "step": r["step"],
+        "lead_status": r["lead_status"], "minutos": r["minutos"],
+        "attempts": r["attempts"], "claimed_by": r["claimed_by"],
+        "erro": r["error"],
+        "recuperavel": r["lead_status"] in ("contacted", "qualified"),
+    } for r in rows]
+
+    # Lead de teste não é perda real — separar para o número não assustar.
+    return {
+        "janela_minutos": minutos,
+        "total": len(orfaos),
+        "recuperaveis": sum(1 for o in orfaos if o["recuperavel"]),
+        "orfaos": orfaos,
+        "nota": ("Nada a fazer: o reclaim de 15 min reenvia sozinho e o MD "
+                 "deduplica pela idempotency_key. Se aparecer aqui repetidamente, "
+                 "o workflow está falhando entre reservar e confirmar."),
+    }
+
+
 @router.post("/api/v1/admin/crm/conteudo/decidir",
              summary="Decide e reserva o conteúdo de um lead")
 def decidir_conteudo(
@@ -151,6 +231,12 @@ def decidir_conteudo(
     """
     dia = (_dt.date.fromisoformat(hoje) if hoje else _dt.date.today())
     registro.limpar_cache()
+    # O cache de recuperação é por **requisição**, não por processo. Cacheado no
+    # módulo, o primeiro cálculo de um lead congelava para sempre: o consumo
+    # parava de avançar, e o lead nunca mais cruzava o marco de 30 ou 45 dias.
+    # O roteiro decide vários leads numa chamada, e é isso que o cache evita
+    # repetir — não a próxima requisição.
+    _RECUP.clear()
 
     ultima_comp = db.execute(text(SQL_ULTIMA_COMPETENCIA)).scalar()
 
@@ -195,27 +281,19 @@ def decidir_conteudo(
         chave = rel.chave if isinstance(rel, Relatorio) else rel["chave"]
         titulo = rel.titulo if isinstance(rel, Relatorio) else rel["titulo"]
         html = _html(rel, ctx)
-        descricao = (rel.blocos[0].texto or "" if isinstance(rel, Relatorio)
-                     else rel.get("descricao", ""))
-        url = (_url_do_relatorio(rel) if isinstance(rel, Relatorio)
-               else rel.get("url", ""))
         ass = (rel.assinatura() if isinstance(rel, Relatorio)
                else f"kb:{chave}")
+        envelope = _envelope(dec.slot, rel, titulo, html, ctx)
         decisoes.append({
             "lead_id": lead_id, "enviar": True, "slot": dec.slot,
             "step": reservado["step"],
-            "template_id": (TEMPLATE_ID if isinstance(rel, Relatorio)
-                            else TEMPLATE_ARTIGO),
-            "topic": ("gateway.kb_digest" if isinstance(rel, Relatorio)
-                      else "gateway.lead_welcome"),
+            "template_id": envelope["template_id"],
+            "topic": envelope["topic"],
             "idempotency_key": f"crm:{reservado['step']}:{lead_id}",
             "recipient": ctx.email,
-            "assunto": (assunto_de(rel) if isinstance(rel, Relatorio)
-                        else f"{titulo} — Knowledge Base"),
+            "assunto": envelope["assunto"],
             "ass": ass, "titulo": titulo, "corpo_html": html,
-            "vars": {"lead_name": ctx.nome, "article_title": titulo,
-                     "article_description": descricao, "article_url": url,
-                     "tools_url": TOOLS_URL, "unsubscribe_url": UNSUBSCRIBE},
+            "vars": envelope["vars"],
         })
     return {"hoje": dia.isoformat(), "decisoes": decisoes}
 
@@ -321,19 +399,17 @@ def _contexto_recuperacao(db: Session, ctx: Contexto) -> ContextoRecuperacao:
 
 
 def _texto_recuperacao(step: str, cr, ctx: Contexto) -> str:
-    """Corpo da recuperação/promoção, montado do número — não do modelo."""
-    from .reports.fontes import num
+    """Descrição do passo, montada do número — não do modelo."""
     dias = cr.dias_sem_consumo
     if step == "winback_30d":
-        return (f"Vi que você não usa as ferramentas há {num(Decimal(dias), 0)} dias. "
-                "Se algo travou ou sobrou dúvida, a resposta é rápida — e o "
-                "material da base de conhecimento continua aberto.")
+        return (f"Faz {int(dias) if dias is not None else '?'} dias que você não "
+                "abre as ferramentas. O acesso continua pronto — e a base de "
+                "conhecimento fica aberta.")
     if step == "winback_45d":
         return ("Faz {d} dias que você não volta. Não é cobrança: é só uma "
                 "conta de que a ferramenta continua aqui se fizer sentido.").format(
                     d=int(dias) if dias is not None else "?")
-    return ("Campanha do mês: o que há de novo nas ferramentas do ecossistema, "
-            "e o que dá para fazer com elas.")
+    return "O que há de novo nas ferramentas do ecossistema neste mês."
 
 
 # Estado de recuperação por lead, montado uma vez por requisição. Sem cache,
@@ -418,15 +494,79 @@ def _reservar(db: Session, lead_id: str, chave: str, tpl: str) -> Optional[dict]
                 saas.nurture_state.attempts + 1, updated_at = now()
          WHERE saas.nurture_state.status <> 'sent'
            AND (saas.nurture_state.claimed_at IS NULL
-                OR saas.nurture_state.claimed_at < now() - interval '15 minutes')
+                OR saas.nurture_state.claimed_at
+                   < now() - make_interval(mins => :janela))
         RETURNING step
-    """), {"lead": lead_id, "step": chave, "tpl": tpl}
+    """), {"lead": lead_id, "step": chave, "tpl": tpl,
+           "janela": JANELA_CLAIM_MINUTOS}
     ).scalar()
     # Commit aqui: a sessão da requisição é descartada no fim, e sem isto a
     # reserva vive só em memória — a próxima chamada devolveria `enviar: true`
     # de novo e dois workers duplicariam o e-mail.
     db.commit()
     return {"step": row} if row else None
+
+
+def _envelope(slot: str, rel, titulo: str, html: str,
+              ctx: Contexto) -> dict:
+    """Template, tópico, assunto e variáveis — decididos pelo **slot**.
+
+    Antes isso vinha de `isinstance(rel, Relatorio)`, que só separa relatório
+    de artigo. Recuperação e promoção também são dicts, então as duas caíam no
+    ramo do artigo e saíam como "Knowledge Base" com `article_*` — sem erro,
+    sem log, só um e-mail que não é o que ninguém desenhou.
+
+    Cada template recebe exatamente as variáveis que o `registry.yaml` declara
+    para ele; o resto é o motivo de existirem `topic` e `vars` separados.
+    """
+    if slot == "winback":
+        return {
+            "template_id": TEMPLATE_REENGAGEMENT,
+            "topic": "gateway.reengagement",
+            "assunto": f"{ctx.nome}, seu acesso continua ativo",
+            "vars": {
+                "lead_name": ctx.nome,
+                "desconto": WINBACK_DESCONTO,
+                "cupom": WINBACK_CUPOM,
+                "validade_dias": WINBACK_VALIDADE_DIAS,
+                "portal_url": PORTAL_URL,
+                "agenda_url": AGENDA_URL,
+                "unsubscribe_url": UNSUBSCRIBE,
+            },
+        }
+
+    if slot == "promo":
+        competencia, destaque = registro.panorama_incc()
+        return {
+            "template_id": TEMPLATE_PROMO,
+            "topic": "gateway.update_incc",
+            "assunto": (f"Panorama do INCC — {competencia}" if competencia
+                        else "O que há de novo nas ferramentas"),
+            "vars": {
+                "lead_name": ctx.nome,
+                "competencia": competencia,
+                "destaque": destaque,
+                "portal_url": PORTAL_URL,
+                "tools_url": TOOLS_URL,
+                "unsubscribe_url": UNSUBSCRIBE,
+            },
+        }
+
+    if isinstance(rel, Relatorio):
+        return {"template_id": TEMPLATE_ID, "topic": "gateway.kb_digest",
+                "assunto": assunto_de(rel),
+                "vars": {"lead_name": ctx.nome, "article_title": titulo,
+                         "article_description": rel.blocos[0].texto or "",
+                         "article_url": _url_do_relatorio(rel),
+                         "tools_url": TOOLS_URL,
+                         "unsubscribe_url": UNSUBSCRIBE}}
+
+    return {"template_id": TEMPLATE_ARTIGO, "topic": "gateway.lead_welcome",
+            "assunto": f"{titulo} — Knowledge Base",
+            "vars": {"lead_name": ctx.nome, "article_title": titulo,
+                     "article_description": rel.get("descricao", ""),
+                     "article_url": rel.get("url", ""),
+                     "tools_url": TOOLS_URL, "unsubscribe_url": UNSUBSCRIBE}}
 
 
 def _html(rel, ctx: Contexto) -> str:
