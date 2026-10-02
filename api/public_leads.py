@@ -111,6 +111,13 @@ class LeadIn(BaseModel):
     plan_slug: Optional[str] = Field(None, max_length=80)
     plano_interesse: Optional[str] = Field(None, max_length=80)
     message: Optional[str] = Field(None, max_length=2000)
+    # Consentimento que o portal já envia (lead.ts, contrato v1). Chega aqui e
+    # era descartado por `extra="ignore"` — o backend lia
+    # `metadata->>'marketing_optin'` que ninguém gravava, então todo mundo
+    # caía no default.
+    consent_lgpd: Optional[bool] = None
+    consent_em: Optional[str] = Field(None, max_length=40)
+    visitor_id: Optional[str] = Field(None, max_length=64)
     utm_source: Optional[str] = Field(None, max_length=200)
     utm_medium: Optional[str] = Field(None, max_length=200)
     utm_campaign: Optional[str] = Field(None, max_length=200)
@@ -336,6 +343,19 @@ class _SqlLeadRepo:
             if key in allowed and value:
                 sets.append(f"{key} = :{key}")
                 params[key] = value
+        # O consentimento e o visitor também são atualizados no reenvio: quem
+        # reenvia o form está renovando a autorização, e perder isso faria o
+        # lead voltar ao estado "sem consentimento gravado".
+        consent = fields.get("metadata") or {}
+        for chave_json, campo in (("consent_lgpd", "consent_lgpd"),
+                                  ("consent_em", "consent_em"),
+                                  ("visitor_id", "visitor_id")):
+            if consent.get(chave_json):
+                sets.append(
+                    f"metadata = COALESCE(metadata,'{{}}'::jsonb) "
+                    f"|| jsonb_build_object(:k, :v)")
+                params[f"k_{campo}"] = chave_json
+                params[f"v_{campo}"] = str(consent[chave_json])
         if not sets:
             return
         params["last_activity_at"] = "NOW()"
@@ -434,6 +454,11 @@ def create_lead(
             "company": payload.company,
             "persona": payload.persona,
             "plan_slug": payload.plan_slug or payload.plano_interesse,
+            "metadata": {k: v for k, v in {
+                "consent_lgpd": payload.consent_lgpd,
+                "consent_em": payload.consent_em,
+                "visitor_id": payload.visitor_id,
+            }.items() if v},
         })
         existing["_ip"] = ip
         return {
@@ -453,6 +478,13 @@ def create_lead(
         metadata["attribution"] = attribution
     if payload.message:
         metadata["message"] = payload.message
+    if payload.consent_lgpd:
+        # Só grava com instante válido: consentimento sem data não prova nada.
+        metadata["consent_lgpd"] = True
+        if payload.consent_em:
+            metadata["consent_em"] = payload.consent_em
+    if payload.visitor_id:
+        metadata["visitor_id"] = payload.visitor_id
 
     lead = store.insert({
         "email": payload.email,

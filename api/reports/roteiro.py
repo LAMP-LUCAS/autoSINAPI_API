@@ -100,6 +100,10 @@ class Roteiro:
             return Decisao(False, motivo="sem consentimento de marketing",
                            slot=slot.tipo)
 
+        # Só o enriquecimento anda por sequência de relatório; artigo,
+        # winback e promo têm fonte própria (ver os blocos abaixo). Sem este
+        # guarda, `chave` fica indefinida nos outros slots e quebra neles.
+        chave = None
         if slot.tipo == "enriquecimento":
             chave = proximo_relatorio(ctx.etapas_enviadas)
             if chave is None:
@@ -137,6 +141,12 @@ class Roteiro:
 
         if slot.tipo == "artigo":
             return self._decidir_artigo(ctx, slot)
+        if slot.tipo in ("winback", "promo"):
+            # Slot móvel do 3º lugar. Sem montador, não dispara — e o
+            # relatório de conteúdo não é usado para eles.
+            return Decisao(False,
+                           motivo=f"slot {slot.tipo} sem montador configurado",
+                           slot=slot.tipo)
 
         rel = self._montar(chave)
         if rel is None:

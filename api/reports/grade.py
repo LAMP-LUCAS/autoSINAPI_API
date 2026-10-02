@@ -54,8 +54,20 @@ TRILHA_ENRIQUECIMENTO: tuple[str, ...] = (
 PULA_SEM_NOVIDADE = frozenset({"sinapi_competencia"})
 
 # Dia da semana: 0=segunda … 6=domingo.
+#
+# Três slots fixos mais duas vagas móveis:
+#
+#   terça    → relatório (enriquecimento)   trilha de 9
+#   quinta   → artigo da KB                trilha de conteúdo
+#   quarta   → recuperação (winback)        3º slot
+#   2ª/6ª    → promoção                    3º slot, vaga
+#
+# Winback e promo **disputam o 3º slot**, não são trilhas paralelas: dois
+# workflows independentes era o que permitia 3–4 e-mails na mesma semana.
 DIA_ENRIQUECIMENTO = 1      # terça
 DIA_ARTIGO = 3              # quinta
+DIA_WINBACK = 2             # quarta
+DIAS_PROMO = (0, 5)        # segunda, sábado
 
 # Cadência por segmento. Lead novo recebe menos: ainda está sendo presentations
 # ao produto, e dois e-mails por semana antes da primeira resposta cansa.
@@ -73,10 +85,19 @@ class Slot:
     hora: int
 
 
-SLOTS = (Slot(DIA_ENRIQUECIMENTO, "enriquecimento", 10),
-         Slot(DIA_ARTIGO, "artigo", 16))
+SLOTS = (
+    Slot(DIA_ENRIQUECIMENTO, "enriquecimento", 10),
+    Slot(DIA_WINBACK, "winback", 11),
+    Slot(DIA_ARTIGO, "artigo", 16),
+    Slot(DIAS_PROMO[0], "promo", 9),
+    Slot(DIAS_PROMO[1], "promo", 9),
+)
 
-TIPO_DIA = {"enriquecimento": 1, "artigo": 1}   # ter/qui já têm dia
+# Cadência do slot móvel. A promo é a mais espaçada de todas: máximo a cada
+# 15 dias, e o padrão é bimestral (60) — promoção toda semana cansa e ainda
+# ocupa a atenção que o conteúdo deveria ter.
+PROMO_MIN_DIAS = 15
+PROMO_PADRAO_DIAS = 60
 
 
 def slot_do_dia(d: _dt.date) -> Optional[Slot]:

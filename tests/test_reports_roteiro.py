@@ -41,9 +41,12 @@ def _ctx(**kw):
 # ── recusas ─────────────────────────────────────────────────────────────────
 
 def test_dia_sem_slot_nao_envia():
-    d = _roteiro().decidir(_ctx(), EstadoSemana(), QUARTA)
-    assert d.enviar is False
-    assert "sem slot" in d.motivo
+    """Sexta e domingo não têm slot — e quarta virou winback."""
+    import datetime as _dt
+    for dia in (_dt.date(2026, 10, 9), _dt.date(2026, 10, 11)):
+        d = _roteiro().decidir(_ctx(), EstadoSemana(), dia)
+        assert d.enviar is False
+        assert "sem slot" in d.motivo, f"{dia} não deveria ser slot"
 
 
 def test_sem_consentimento_nao_envia_mesmo_em_dia_de_slot():
@@ -172,6 +175,11 @@ def test_agenda_nao_excede_o_teto_do_segmento():
 
 
 def test_agenda_respeita_os_dias_da_grade():
+    """Só envia em dia de slot: 2ª, 3ª, 4ª e 6ª.
+
+    Winback (quarta) e promo (2ª/6ª) entram como vaga do 3º slot; sem
+    `montar` wiring eles não disparam — o que a agenda deve refletir.
+    """
     ctx = _ctx(dias_de_relacionamento=45)
     previa = agenda_proximos_dias(ctx, EstadoSemana(), _roteiro(), TERCA, dias=21)
     for _, dia, dec in previa:
@@ -247,6 +255,19 @@ def test_terca_entrega_relatorio_e_quinta_entrega_artigo():
 
     assert terca.slot == "enriquecimento" and terca.relatorio.chave.startswith("incc_")
     assert quinta.slot == "artigo" and quinta.relatorio.chave == "kb_01"
+
+
+def test_winback_sem_montador_nao_dispara():
+    """O 3º slot existe na grade mas depende de fonte própria (recuperador.py).
+
+    Sem montador, ele recusa explicitamente — nunca cai para o relatório, que é
+    do slot de terça.
+    """
+    r = _roteiro()
+    d = r.decidir(_ctx(dias_de_relacionamento=45), EstadoSemana(), QUARTA)
+    assert d.enviar is False
+    assert "winback" in d.motivo
+    assert d.slot == "winback"
 
 
 def test_slot_de_artigo_nao_depende_do_ciclo_de_relatorio():

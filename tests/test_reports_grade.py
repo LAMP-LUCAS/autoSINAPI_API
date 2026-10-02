@@ -71,15 +71,29 @@ def test_enriquecimento_na_terca_e_artigo_na_quinta():
 
 
 def test_dias_sem_slot_nao_disparam_nada():
-    """Quarta e segunda não têm e-mail de conteúdo."""
-    for d in (_dt.date(2026, 10, 5), _dt.date(2026, 10, 7),
-              _dt.date(2026, 10, 10), _dt.date(2026, 10, 11)):
+    """Sexta e domingo seguem sem slot.
+
+    Segunda virou promo e quarta virou winback — por isso a lista mudou.
+    """
+    for d in (_dt.date(2026, 10, 9),   # sexta
+              _dt.date(2026, 10, 11)): # domingo
         assert slot_do_dia(d) is None, f"{d} não deveria ter slot"
 
 
-def test_os_dois_slots_sao_em_dias_distintos():
+def test_relatorio_e_artigo_ficam_em_dias_distintos():
+    """Os dois slots fixos de conteúdo não podem colidir."""
     assert DIA_ENRIQUECIMENTO != DIA_ARTIGO
-    assert len(SLOTS) == 2
+
+
+def test_o_terceiro_slot_tem_quarta_e_promo_comum():
+    """Winback e promo disputam o mesmo espaço: um e-mail, não dois.
+
+    São 5 dias na grade mas 3 slots por semana — terça, quarta e quinta são
+    fixos, e segunda/sábado são a mesma vaga.
+    """
+    tipos = {s.tipo for s in SLOTS}
+    assert {"enriquecimento", "artigo", "winback", "promo"} <= tipos
+    assert len(SLOTS) == 5
 
 
 # ── a cadência por segmento ──────────────────────────────────────────────────
