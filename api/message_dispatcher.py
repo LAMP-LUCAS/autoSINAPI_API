@@ -92,7 +92,10 @@ class MessageDispatcher:
     # ── inbound (communication) ───────────────────────────────────────────────
     def send(self, topic: str, message: str, title: Optional[str] = None,
              sender: Optional[str] = None, metadata: Optional[dict] = None,
-             recipient: Optional[str] = None) -> dict:
+             recipient: Optional[str] = None,
+             template_id: Optional[str] = None,
+             variables: Optional[dict] = None,
+             idempotency_key: Optional[str] = None) -> dict:
         """Send a message through the authenticated MD inbound gateway.
 
         `recipient` endereça a um destinatário específico. Sem ele, o MD aplica
@@ -108,6 +111,17 @@ class MessageDispatcher:
             "sender": sender,
             "metadata": metadata or {},
         }
+        # Template, variáveis e idempotência: o `InboundController` do MD já
+        # aceita os três (ver inbound_controller.rb#create). Sem `template_id`
+        # o MD resolve o tópico para o template **genérico** e o assunto/corpo
+        # saem errados — foi o que aconteceu com a primeira lead real depois
+        # da porta ser restaurada (2026-10-02).
+        if template_id is not None:
+            payload["template_id"] = template_id
+        if variables:
+            payload["variables"] = variables
+        if idempotency_key is not None:
+            payload["idempotency_key"] = idempotency_key
         if recipient is not None:
             recipient = recipient.strip()
             if not _is_valid_email(recipient):

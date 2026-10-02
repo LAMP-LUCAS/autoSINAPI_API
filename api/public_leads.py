@@ -78,6 +78,12 @@ _ATTRIBUTION_KEYS = (
 # de quem ainda não se identificou.
 _MAX_REQUESTS_PER_MIN = 10
 _MAX_EMAILS_PER_HOUR = 5
+
+# Template de boas-vindas no MessageDispatcher. Fica aqui, e não inline na
+# chamada, porque o sintoma de errar é silencioso: a OS sai `sent` com o
+# template genérico e o cliente só percebe ao abrir a caixa.
+LEAD_WELCOME_TEMPLATE_ID = "66666666-6666-6666-6666-666666666666"
+PORTAL_URL = "https://mundoaec.com"
 # Tempo máximo de espera pelo MD. Acima disso o lead já está salvo e a resposta
 # não pode esperar: a captura é o que importa.
 _MD_TIMEOUT_S = 2.0
@@ -188,16 +194,21 @@ def _redis_limiter():
 def _mailer():
     """Despachante do e-mail de boas-vindas via MessageDispatcher.
 
-    O `MessageDispatcher` expõe `send(topic, ...)`; o texto e o assunto são
-    montados aqui, com o mesmo formato que o plugin usava — o MD cuida do
-    template e da entrega.
+    O `MessageDispatcher` expõe `send(topic, ...)`; o texto de fallback é
+    montado aqui e o MD cuida da entrega.
+
+    `template_id` **não é opcional**: sem ele o MD resolve o tópico para o
+    template genérico (`gateway_message`) e o cliente recebe assunto e corpo
+    errados. Foi o que aconteceu com a primeira lead real depois da porta ser
+    restaurada (2026-10-02): a OS saiu `sent` com o template errado e nada no
+    fluxo denunciou.
     """
     from .message_dispatcher import MessageDispatcher
 
     md = MessageDispatcher()
 
     def send(lead_id: str, name: str, email: str, source: Optional[str] = None):
-        portal = getattr(md, "portal_url", None) or "https://mundoaec.com"
+        portal = getattr(md, "portal_url", None) or PORTAL_URL
         message = (
             f"Obrigado pelo interesse!\n\n"
             f"Olá {name or 'Lead'},\n\n"
@@ -214,6 +225,20 @@ def _mailer():
             message,
             title="Bem-vindo ao Ecossistema Mundoaec",
             recipient=email,
+            template_id=LEAD_WELCOME_TEMPLATE_ID,
+            # Schema do template (odc_template_versions.variables_schema):
+            # {lead_name, portal_url, tools_url}. Enviar menos deixa o Liquid
+            # com `{{ ... }}` visível no corpo do e-mail.
+            variables={
+                "lead_name": name or "Lead",
+                "portal_url": portal,
+                "tools_url": f"{portal}/ferramentas",
+            },
+            # Um e-mail de boas-vindas por lead. O dedupe de lead evita duas
+            # linhas no banco, mas o envio acontece na mesma requisição — sem
+            # chave, um reenvio que chegue antes do commit duplica a caixa do
+            # cliente. O MD deduplica por esta chave.
+            idempotency_key=f"lead_welcome:{lead_id}",
             metadata={"lead_id": lead_id, "source": source or "portal"},
         )
 
