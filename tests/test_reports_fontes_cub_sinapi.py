@@ -92,10 +92,30 @@ def test_dispersao_nao_inventa_com_dado_insuficiente():
     assert montar_cub_dispersao({"estados": BR["estados"]}) is None   # sem média
 
 
-def test_regiao_mais_cara_e_mais_barata():
-    m = _m(montar_cub_dispersao(BR))
-    assert "SUL" in m["Região mais cara"].valor
+def test_regiao_em_foco_gira_com_o_cursor():
+    """O destaque da região não pode ser sempre a mesma.
+
+    O gráfico mostra todas, mas o número em destaque precisa variar — é o que
+    dá algo novo a cada envio do mesmo relatório.
+    """
+    vistos = []
+    for cursor in range(len(BR["regioes"])):
+        m = _m(montar_cub_dispersao(BR, cursor=cursor))
+        foco = next(v for k, v in m.items() if k.startswith("Região em foco"))
+        vistos.append(foco.valor.split("·")[0].strip())
+    assert len(set(vistos)) == len(BR["regioes"]), f"destaque não girou: {vistos}"
+
+
+def test_regiao_mais_barata_permanece_o_extremo():
+    """A região mais barata é um fato do dado, não uma escolha — não gira."""
+    m = _m(montar_cub_dispersao(BR, cursor=2))
     assert "NORDESTE" in m["Região mais barata"].valor
+
+
+def test_posicao_na_rotacao_e_declarada():
+    """O leitor precisa saber que o ciclo vai passar pelos outros."""
+    m = _m(montar_cub_estado(BR, cursor=2))
+    assert "de 3" in m["Posição na rotação"].valor
 
 
 def test_grafico_de_regiao_nao_e_percentual():
@@ -227,3 +247,44 @@ def test_competencia_diz_a_anterior():
 def test_competencia_anterior_vira_ano_em_janeiro():
     assert montar_sinapi_competencia(
         {**BASE, "competencia": "2026-01"}, "2025-12").rodape.endswith("2025-12")
+
+
+# ── rotação: o defeito que o usuário apontou ──────────────────────────────────
+# Antes, `cub_estado_projeto` escolhia o estado de maior participação e mandava
+# o mesmo para sempre. Com 9 estados na base, o lead via o mesmo número 9 vezes
+# — que é exatamente "informação repetida", o oposto do objetivo.
+
+def test_estado_gira_ao_longo_de_um_ciclo_completo():
+    pool = len(BR["estados"])
+    vistos = [montar_cub_estado(BR, cursor=c).titulo for c in range(pool)]
+    assert len(set(vistos)) == pool, (
+        f"o estado não girou em {pool} envios:\n  " + "\n  ".join(vistos))
+
+
+def test_ciclo_reinicia_depois_de_esgotar_o_pool():
+    """A base tem 9 estados e a trilha dura anos: repetir é melhor que parar."""
+    pool = len(BR["estados"])
+    assert (montar_cub_estado(BR, cursor=pool).titulo
+            == montar_cub_estado(BR, cursor=0).titulo)
+
+
+def test_assinatura_muda_entre_estados_diferentes():
+    """Sem isso, o roteiro trataria o segundo envio como 'já viu isso' e
+    pularia — a rotação seria invisível na prática."""
+    pool = len(BR["estados"])
+    assinaturas = {montar_cub_estado(BR, cursor=c).assinatura()
+                   for c in range(pool)}
+    assert len(assinaturas) == pool, "assinatura não distingue os estados"
+
+
+def test_rotacao_comeca_pelo_estado_mais_executado():
+    """O primeiro envio mostra o que a maior parte da obra executa."""
+    m = _m(montar_cub_estado(BR, cursor=0))
+    assert "CUB SP" in m        # SP tem a maior participação no fixture
+
+
+def test_dispersao_tambem_gera_conteudo_novo_por_cursor():
+    pool = len(BR["regioes"])
+    assinaturas = {montar_cub_dispersao(BR, cursor=c).assinatura()
+                   for c in range(pool)}
+    assert len(assinaturas) == pool, "a dispersão manda o mesmo sempre"

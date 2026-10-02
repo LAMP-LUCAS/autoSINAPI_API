@@ -62,6 +62,18 @@ def _base() -> Optional[dict]:
     return _cache["sinapi"]
 
 
+def _cursor(ctx) -> int:
+    """Índice de rotação do lead: quantos relatórios ele já recebeu.
+
+    Vem do próprio contexto, não de um contador no processo — assim dois
+    workers não contam o mesmo envio, e a sequência do lead sobrevive a um
+    restart. O roteiro tem `etapas_enviadas`, que é a mesma informação.
+    """
+    if ctx is None:
+        return 0
+    return len(getattr(ctx, "etapas_enviadas", ()) or ())
+
+
 def limpar_cache():
     """Chamado entre execuções: a competência muda e o cache não pode mentir."""
     _cache.clear()
@@ -104,10 +116,10 @@ def sinapi_competencia(_c=None, ultima: Optional[str] = None) -> Optional[Relato
 MONTADORES: dict[str, Callable[..., Optional[Relatorio]]] = {
     "incc_leitura_mes": incc_leitura,
     "incc_timing_m_di": incc_timing,
-    "cub_dispersao": lambda c=None: montar_cub_dispersao(_br()),
+    "cub_dispersao": lambda c=None: montar_cub_dispersao(_br(), _cursor(c)),
     "sinapi_cobertura": sinapi_cobertura,
     "incc_aceleracao": incc_aceleracao,
-    "cub_estado_projeto": lambda c=None: montar_cub_estado(_br()),
+    "cub_estado_projeto": lambda c=None: montar_cub_estado(_br(), _cursor(c)),
     "sinapi_foco_custo": sinapi_foco,
     "incc_horizonte_36m": incc_horizonte,
     "sinapi_competencia": sinapi_competencia,

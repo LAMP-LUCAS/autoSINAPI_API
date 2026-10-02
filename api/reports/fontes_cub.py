@@ -27,6 +27,7 @@ from typing import Optional
 
 from .fontes import num, pct
 from .model import Bloco, Categoria, Metrica, Relatorio, Serie
+from .rotacao import escolher_estado, regioes_rotativas
 
 logger = logging.getLogger("autosinapi.reports.cub")
 
@@ -81,7 +82,8 @@ def coletar_br() -> Optional[dict]:
     }
 
 
-def montar_cub_dispersao(br: Optional[dict]) -> Optional[Relatorio]:
+def montar_cub_dispersao(br: Optional[dict],
+                         cursor: int = 0) -> Optional[Relatorio]:
     """Relatório 3 — o m² varia quanto entre os estados, e por quê.
 
     A dispersão não é ruído: R$ 565/m² entre o mais caro e o mais barato é
@@ -101,7 +103,15 @@ def montar_cub_dispersao(br: Optional[dict]) -> Optional[Relatorio]:
     custo_obra = amplitude * obra
 
     regioes = sorted(br["regioes"].items(), key=lambda kv: kv[1], reverse=True)
-    mais_alta, mais_baixa = regioes[0], regioes[-1]
+    # O destaque da região gira com o cursor: sem isso a mesma região aparece
+    # em todos os ciclos e o relatório não tem nada de novo. O gráfico
+    # continua mostrando todas.
+    if regioes:
+        giro = regioes_rotativas(br, cursor)
+        mais_alta = giro[0]
+    else:
+        mais_alta = ("—", Decimal(0))
+    mais_baixa = regioes[-1] if regioes else ("—", Decimal(0))
 
     return Relatorio(
         chave="cub_dispersao",
@@ -121,8 +131,11 @@ def montar_cub_dispersao(br: Optional[dict]) -> Optional[Relatorio]:
                         destaque=True),
                 Metrica("Amplitude", f"R$ {num(amplitude)}/m²",
                         detalhe=f"{pct_txt} da média"),
-                Metrica("Região mais cara", f"{mais_alta[0]} · R$ {num(mais_alta[1])}"),
-                Metrica("Região mais barata", f"{mais_baixa[0]} · R$ {num(mais_baixa[1])}"),
+                Metrica(f"Região em foco ({cursor % max(len(regioes), 1) + 1}/{len(regioes)})",
+                        f"{mais_alta[0]} · R$ {num(mais_alta[1])}",
+                        detalhe="destaque que gira a cada envio"),
+                Metrica("Região mais barata", f"{mais_baixa[0]} · R$ {num(mais_baixa[1])}",
+                        detalhe="o outro extremo da curva"),
                 Metrica("Em 2.000 m²", f"R$ {num(custo_obra / Decimal(1_000_000), 2)} mi",
                         detalhe="diferença entre os extremos"),
             ],
@@ -138,15 +151,24 @@ def montar_cub_dispersao(br: Optional[dict]) -> Optional[Relatorio]:
     )
 
 
-def montar_cub_estado(br: Optional[dict]) -> Optional[Relatorio]:
+def montar_cub_estado(br: Optional[dict],
+                      cursor: int = 0) -> Optional[Relatorio]:
     """Relatório 6 — um estado, um número, o que ele significa.
 
-    Escolhe o estado com maior participação efetiva: é o que a maior parte
-    da obra nacional executaria, o que dá leitura relevant em vez de curiosidade.
+    O estado **gira com o cursor**. Antes era sempre o de maior participação
+    efetiva, e o lead via o mesmo número em todos os ciclos — com 9 estados
+    na base, nove vezes a mesma informação.
+
+    A ordem começa pelo de maior participação (o que a maior parte da obra
+    executa) e passa por todos os outros, então o ciclo cobre a base
+    inteira antes de repetir.
     """
     if not br or not br.get("estados"):
         return None
-    uf = max(br["estados"], key=lambda e: e.get("participacao") or Decimal(0))
+    alvo = escolher_estado(br, cursor)
+    if alvo is None:
+        return None
+    uf = alvo
     br_estados = {e["uf"]: e for e in br["estados"]}
     ref = br_estados.get(uf["uf"], uf)
     obra = Decimal(2000)
@@ -181,6 +203,9 @@ def montar_cub_estado(br: Optional[dict]) -> Optional[Relatorio]:
                 Metrica("Participação efetiva",
                         f"{num(uf.get('participacao'))}%",
                         detalhe="peso do estado na amostra nacional"),
+                Metrica("Posição na rotação",
+                        f"{cursor % len(br['estados']) + 1} de {len(br['estados'])}",
+                        detalhe="o ciclo passa por todos antes de repetir"),
             ],
             texto=("Escolher o estado não é detalhe de planilha: o mesmo "
                    "escopo muda de valor conforme o CUB local."),
