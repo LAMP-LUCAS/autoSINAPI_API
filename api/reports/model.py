@@ -145,6 +145,11 @@ class Contexto:
     dias_de_relacionamento: int = 0
     etapas_enviadas: Sequence[str] = ()
     consentimento_marketing: bool = True
+    # Assinatura do último relatório de conteúdo enviado. Permite a segunda
+    # trava do roteiro: competência "nova" cujo conteúdo é idêntico ao
+    # anterior não sai — sem isso, "competência nova" viraria atalho para
+    # reenviar a mesma informação com outro rótulo.
+    ultima_assinatura: Optional[str] = None
 
     @property
     def segmento(self) -> str:

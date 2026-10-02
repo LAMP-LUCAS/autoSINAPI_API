@@ -153,13 +153,14 @@ def montar_incc_leitura(linhas: list[dict]) -> Optional[Relatorio]:
 
     return Relatorio(
         chave="incc_leitura_mes",
-        titulo=f"INCC {atual['data_id'].strftime('%m/%Y')}: materiais "
-               f"{'sobem' if var_m >= 0 else 'caem'} {pct(abs(var_m))}",
-        resumo=f"O índice de materiais mudou {pct(delta).lstrip('+')} ponto em "
-               f"relação ao mês anterior — está {tend}.",
+        titulo=f"INCC {atual['data_id'].strftime('%m/%Y')} — Mercado "
+               f"{'sobe' if var_m >= 0 else 'cai'} {pct(abs(var_m))}",
+        resumo=(f"O INCC-M, índice de mercado usado em reajuste de contratos, "
+                f"mudou {pct(delta, unidade=False)} ponto em relação ao mês "
+                f"anterior — está {tend}."),
         blocos=[Bloco(
             metricas=[
-                Metrica("INCC-M (materiais)", num(atual["idx_m"]), destaque=True,
+                Metrica("INCC-M · Mercado", num(atual["idx_m"]), destaque=True,
                         variacao=_sinal(var_m),
                         detalhe=atual["data_id"].strftime("%m/%Y")),
                 Metrica("Variação mensal", pct(var_m), destaque=True,
@@ -168,15 +169,16 @@ def montar_incc_leitura(linhas: list[dict]) -> Optional[Relatorio]:
                                 f"{ant['data_id'].strftime('%m/%Y')}"),
                 Metrica("Acumulado 12 meses", pct(atual["y12_m"] or 0),
                         destaque=True),
-                Metrica("INCC-DI (total)", num(atual["idx_di"], 2),
+                Metrica("INCC-DI · Disponibilidade Interna",
+                        num(atual["idx_di"], 2),
                         detalhe=f"var. mensal {pct(atual['var_di'] or 0)}"),
-                Metrica("Spread materiais × total",
-                        f"{pct(spread, unidade=False)} p.p.",
-                        detalhe="negativo = materiais pressionam menos"),
+                Metrica("Spread M × DI", f"{pct(spread, unidade=False)} p.p.",
+                        detalhe="diferença entre as janelas de coleta"),
                 Metrica("Tendência", tend,
                         detalhe=f"{pct(delta, unidade=False)} p.p. vs mês anterior"),
             ],
-            texto="Materiais e total não andam juntos: o spread mede isso.",
+            texto=("Ambos os índices cobrem materiais, serviços e mão de obra — "
+                   "o que os separa é a janela de coleta, não o que medem."),
         )],
         series=[Serie("INCC-M",
                       [(r["data_id"].strftime("%m/%y"), r["var_m"])
@@ -189,44 +191,68 @@ def montar_incc_leitura(linhas: list[dict]) -> Optional[Relatorio]:
 
 
 def montar_incc_timing(linhas: list[dict]) -> Optional[Relatorio]:
-    """Relatório 2 — M × DI lidos como **timing**, não como número.
+    """Relatório 2 — a diferença entre M e DI lida como **janela**, não escopo.
 
-    As janelas de coleta são diferentes: o M coleta do dia 21 do mês anterior
-    ao dia 20 do mês de referência; o DI coleta o mês inteiro. Quando o M
-    está *acima* do DI, o mercado antecipou a alta de material — a janela
-    antecipada capturou pressão de preço que a janela cheia ainda não viu.
+    Os dois índices cobrem o mesmo objeto: materiais e equipamentos, serviços
+    e mão de obra (metodologia FGV IBRE). INCC-M é "Mercado"; INCC-DI é
+    "Disponibilidade Interna". O que os separa é **quando** collectam:
+
+        INCC-M   dia 21 do mês anterior → dia 20 do mês de referência
+        INCC-DI  primeiro → último dia do mês civil
+
+    Então o spread mede o deslocamento entre as janelas, não o peso de uma
+    categoria sobre outra. Quando o M está à frente, a janela antecipada já
+    capturou pressão de preço que a janela cheia ainda vai ver. Quando está
+    atrás, o mês fechado puxou alta que a janela do dia 20 ainda não tinha
+    consolidado.
+
+    Cuidado de leitura: o spread é pequeno (média histórica de ~0,09 p.p.) e
+    **não é tendência**. Um mês isolado não diz nada sobre direção — por isso
+    o relatório compara com a média de 32 meses em vez de afirmar.
     """
     linhas = list(linhas)
     if len(linhas) < 4:
         return None
     spreads = [((r["var_m"] or 0) - (r["var_di"] or 0)) for r in linhas]
     media = sum(spreads) / Decimal(len(spreads))
+    desvio = (sum((x - media) ** 2 for x in spreads) / Decimal(len(spreads))) ** Decimal("0.5")
     atual = linhas[0]
     spread = spreads[0]
 
-    antecipou = spread > 0
-    leitura = ("o mercado antecipou a alta de material" if antecipou
-               else "o total puxou mais que o material — mão de obra e serviços pesam")
+    a_frente = spread > 0
+    leitura = ("a janela do M, que fecha no dia 20, jáincorporou a alta"
+               if a_frente else
+               "o mês fechado do DI puxou uma alta que a janela do M não viu")
+    # Só afirma direção quando o mês está fora do próprio ruído histórico.
+    if abs(spread - media) <= desvio:
+        leitura = "dentro do padrão histórico — sem deslocamento entre janelas"
+
     return Relatorio(
         chave="incc_timing_m_di",
-        titulo=("INCC-M à frente do DI: o mercado antecipou o preço"
-                if antecipou else
-                "INCC-DI puxando: onde está a pressão do custo"),
-        resumo=f"Em {atual['data_id'].strftime('%m/%Y')} a diferença entre os "
-               f"dois índices foi de {pct(spread, unidade=False)} ponto — "
-               f"{leitura}.",
+        titulo="INCC-M e INCC-DI: o que a diferença entre janelas mostra",
+        resumo=(f"Em {atual['data_id'].strftime('%m/%Y')} a diferença foi de "
+                f"{pct(spread, unidade=False)} ponto — {leitura}."),
         blocos=[Bloco(
             metricas=[
-                Metrica("INCC-M (janela antecipada)", pct(atual["var_m"] or 0)),
-                Metrica("INCC-DI (mês cheio)", pct(atual["var_di"] or 0)),
-                Metrica("Diferença", f"{pct(spread).replace('%', '')} p.p.",
+                Metrica("INCC-M · Mercado (dia 21→20)",
+                        pct(atual["var_m"] or 0),
+                        detalhe="janela antecipada"),
+                Metrica("INCC-DI · Disp. Interna (mês cheio)",
+                        pct(atual["var_di"] or 0),
+                        detalhe="janela do mês fechado"),
+                Metrica("Diferença entre janelas",
+                        f"{pct(spread, unidade=False)} p.p.",
                         variacao=_sinal(spread)),
-                Metrica("Média histórica", f"{pct(media, unidade=False)} p.p.",
-                        detalhe=f"{len(spreads)} meses"),
+                Metrica("Média histórica",
+                        f"{pct(media, unidade=False)} p.p.",
+                        detalhe=f"{len(spreads)} meses, desvio "
+                                f"{pct(desvio, unidade=False)} p.p."),
             ],
-            texto=("Quando o M está acima do DI, a janela antecipada capturou "
-                   "pressão de preço antes da janela cheia. Quando está abaixo, "
-                   "o DI pegou alta de serviço que o M ainda não senteu."),
+            texto=("Os dois índices medem o mesmo — materiais e equipamentos, "
+                   "serviços e mão de obra. O INCC-M é o de mercado e coleta "
+                   "na janela antecipada (do dia 21 do mês anterior ao dia 20); "
+                   "o INCC-DI é o de disponibilidade interna e coleta o mês "
+                   "cheio. A diferença entre eles é a janela, não o escopo."),
         )],
         series=[
             Serie("INCC-M",
@@ -239,7 +265,8 @@ def montar_incc_timing(linhas: list[dict]) -> Optional[Relatorio]:
                   em_percentual=True),
         ],
         categoria=Categoria.INSIGHT,
-        rodape="INCC-M coleta do dia 21 ao dia 20 · INCC-DI coleta o mês cheio",
+        rodape=("Fonte FGV IBRE / BCB (SGS) · ambos abrangem materiais, "
+                "serviços e mão de obra · a diferença é de janela de coleta"),
     )
 
 

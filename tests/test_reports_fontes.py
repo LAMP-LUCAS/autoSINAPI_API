@@ -92,22 +92,14 @@ def test_tendencia_estavel_quando_nao_muda():
 
 
 def test_spread_negativo_e_explicito():
-    """M abaixo do DI = material pressiona menos que o total."""
-    r = montar_incc_timing(_linhas(var_m="0.0066", var_di="0.0085"))
-    dif = _metricas(r)["Diferença"]
+    """M abaixo do DI = a janela do mês fechado puxou a alta."""
+    # M constante abaixo do DI: o spread é persistente, não ruído de um mês.
+    r = montar_incc_timing(_linhas(n=6, var_m="0.0066", var_di="0.0085"))
+    dif = _metricas(r)["Diferença entre janelas"]
     assert "-0,19 p.p." in dif.valor
     assert dif.variacao == "▼"
 
 
-def test_timing_diz_que_o_mercado_antecipou_quando_m_esta_acima():
-    r = montar_incc_timing(_linhas(var_m="0.0088", var_di="0.0077"))
-    assert "antecipou" in (r.titulo + r.resumo).lower()
-
-
-def test_timing_diz_que_o_total_puxa_quando_di_esta_acima():
-    r = montar_incc_timing(_linhas(var_m="0.0066", var_di="0.0085"))
-    txt = (r.titulo + r.resumo).lower()
-    assert "puxou" in txt or "pesam" in txt
 
 
 def test_dados_insuficientes_nao_geram_relatorio_fake():
@@ -131,3 +123,67 @@ def test_nota_e_estado_nao_numero_novo():
 
 def test_nota_sem_historico_nao_inventa():
     assert nota_incc_atual([]) is None
+
+
+# ── A terminologia das siglas ─────────────────────────────────────────────────
+# Erro real (2026-10-02): o relatório rotulava INCC-M como "materiais" e
+# atribuía a diferença M×DI a categorias (mão de obra pesando mais).
+# Ambos factualmente errados — INCC-M é *Mercado* e cobre materiais,
+# equipamentos, serviços e mão de obra; o DI cobre o mesmo. O que os separa
+# é a janela de coleta.
+#
+# Estes testes existem para travar a terminologia na fonte, porque um rótulo
+# errado aqui vira conseil errada na obra de quem lê o e-mail.
+
+def test_rotulos_usam_os_nomes_oficiais_das_siglas():
+    r = montar_incc_leitura(_linhas())
+    rotulos = " ".join(m.rotulo for b in r.blocos for m in b.metricas)
+    assert "Mercado" in rotulos, f"rótulo do INCC-M sem 'Mercado': {rotulos}"
+    assert "Disponibilidade Interna" in rotulos, "rótulo do INCC-DI incorreto"
+    assert "(materiais)" not in rotulos, "INCC-M rotulado como 'materiais'"
+    assert "INCC-M (janela" not in rotulos
+
+
+def test_nenhum_texto_diz_que_m_e_somente_materiais():
+    """Varre TODOS os textos do relatório, não só os rótulos.
+
+    Inclui o relatório de timing, que é onde o erro original estava: é nele
+    que a diferença era atribuída a "mão de obra e serviços pesam".
+    """
+    r = montar_incc_leitura(_linhas())
+    textos = " ".join([r.titulo, r.resumo, r.rodape or ""]
+                      + [b.texto or "" for b in r.blocos])
+    proibidos = ("índice de materiais", "materiais subiu", "materiais pressionam",
+                 "só materiais", "materiais caem")
+    for p in proibidos:
+        assert p not in textos.lower(), f"texto afirma que M é sobre materiais: {p}"
+
+
+def test_timing_explica_a_diferenca_como_janela_e_nao_como_categoria():
+    """A leitura correta é: mesmo objeto, janelas diferentes."""
+    r = montar_incc_timing(_linhas(n=6, var_m="0.0066", var_di="0.0085"))
+    txt = " ".join([r.titulo, r.resumo, r.rodape or ""]
+                  + [b.texto or "" for b in r.blocos]).lower()
+    assert "janela" in txt, "a diferença não foi explicada pela janela de coleta"
+    assert "mesmo" in txt, "não diz que os dois índices medem o mesmo objeto"
+    # a leitura antiga: DI pesado porque mão de obra pesa mais
+    assert "pesam" not in txt, "atribui a diferença a categoria, não a janela"
+    assert "pesa mais" not in txt, "atribui a diferença a categoria, não a janela"
+    assert "pressiona" not in txt, "atribui a diferença a categoria, não a janela"
+    assert "antecipada" in txt, "não menciona a janela antecipada (dia 21→20)"
+
+
+def test_timing_nao_afirma_deslocamento_dentro_do_ruido():
+    """O spread é pequeno e ruidoso; um mês dentro do desvio não é sinal."""
+    # série toda igual → spread ~0 e desvio ~0: precisa cair no "padrão"
+    r = montar_incc_timing(_linhas(n=6, var_m="0.0066", var_di="0.0066"))
+    assert "dentro do padrão" in r.resumo, (
+        "afirmou deslocamento onde o mês está dentro do ruído histórico")
+
+
+def test_timing_reporta_media_e_desvio_com_base_na_serie():
+    """A afirmação de 'dentro do padrão' precisa de base comparável."""
+    r = montar_incc_timing(_linhas(n=6, var_m="0.0066", var_di="0.0085"))
+    m = _metricas(r)
+    assert "6 meses" in m["Média histórica"].detalhe
+    assert "desvio" in m["Média histórica"].detalhe
