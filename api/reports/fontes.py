@@ -270,6 +270,161 @@ def montar_incc_timing(linhas: list[dict]) -> Optional[Relatorio]:
     )
 
 
+def _enriquecer_com_overview(linhas: list[dict]) -> list[dict]:
+    """Completa a série com o `overview` (YTD, 24m, 36m).
+
+    `/history` traz a série mensal; `/overview` traz as janelas acumuladas.
+    Sem esta etapa o relatório de horizonte longo não teria do que falar —
+    e o título anunciaria 36 meses com o dado de 12.
+    """
+    ov = None
+    try:
+        import json as _json
+        import urllib.request as _rq
+        for base in [b for b in _INCC_URLS if b]:
+            try:
+                with _rq.urlopen(f"{base}/api/v1/incc/overview", timeout=6) as r:
+                    ov = _json.loads(r.read().decode())
+                break
+            except Exception:
+                continue
+    except Exception as exc:
+        logger.debug("overview do INCC indisponível: %s", exc)
+
+    # `ov` fica `None` quando nenhuma base respondeu: sem o overview, o
+    # relatório de horizonte sai só com o dado de 12 meses — o que o próprio
+    # relatório declara no título. Degradar é melhor que inventar 36 meses.
+    if not ov:
+        return linhas
+
+    m = (ov.get("incc_m") or {})
+    di = (ov.get("incc_di") or {})
+    acc = (ov.get("aceleracao_incc_m") or {})
+    if not linhas:
+        return linhas
+    atual = linhas[0]
+    atual.update({
+        "ytd_m": m.get("variacao_ytd_percentual"),
+        "m24_m": m.get("variacao_24m_percentual"),
+        "m36_m": m.get("variacao_36m_percentual"),
+        "ytd_di": di.get("variacao_ytd_percentual"),
+        "m24_di": di.get("variacao_24m_percentual"),
+        "m36_di": di.get("variacao_36m_percentual"),
+        "spread_pp": ov.get("spread_mensal_pontos"),
+        "aceleracao": acc,
+    })
+    return linhas
+
+
+def _serie_incc(linhas, campo="var_m"):
+    return [(r["data_id"].strftime("%m/%y"), r[campo])
+            for r in reversed(linhas) if r.get(campo) is not None]
+
+
+def montar_incc_aceleracao(linhas: list[dict]) -> Optional[Relatorio]:
+    """Ângulo 5 — acelerando ou desacelerando, e há quanto tempo.
+
+    A variação mensal sozinha não diz nada: 0,66% é alta ou baixa depende do
+    que veio antes. O que informa é a **sequência** de variações — três meses
+    caindo e depois um subindo é mudança de direção, não ruído.
+    """
+    linhas = [r for r in list(linhas) if r.get("var_m") is not None]
+    if len(linhas) < 4:
+        return None
+    var = [r["var_m"] for r in linhas]          # mais recente primeiro
+    atual = linhas[0]
+    seq = list(reversed(var[-5:]))              # mais antigo → mais recente
+
+    # Conta quantas variações MQ são crescentes de forma seguida.
+    alta_seguida = 0
+    for a, b in zip(seq, seq[1:]):
+        alta_seguida = alta_seguida + 1 if b > a else 0
+
+    if alta_seguida >= 2:
+        leitura = "acelerando há semanas"
+    elif alta_seguida == 1:
+        leitura = "voltou a subir depois de queda"
+    else:
+        leitura = "ainda em desaceleração"
+
+    seq_txt = " · ".join(pct(v) for v in seq)
+    return Relatorio(
+        chave="incc_aceleracao",
+        titulo=f"INCC-M {leitura}: {seq_txt}",
+        resumo=(f"Em {atual['data_id'].strftime('%m/%Y')} o índice variou "
+                f"{pct(atual['var_m'])}. A sequência dos últimos "
+                f"{len(seq)} meses é {leitura} — a variação do mês, sozinha, "
+                f"não diz se a alta está acelerando ou chegando ao fim."),
+        blocos=[Bloco(
+            metricas=[
+                Metrica("Variação mensal", pct(atual["var_m"]), destaque=True),
+                Metrica("Mês anterior", pct(linhas[1]["var_m"]), destaque=True),
+                Metrica("Sequência recente", seq_txt,
+                        detalhe="do mais antigo ao mais recente"),
+                Metrica("Leitura", leitura, destaque=True),
+            ],
+            texto=("Quem olha só o número do mês não sabe se está olhando "
+                   "uma aceleração ou o fim de uma desaceleração."),
+        )],
+        series=[Serie("INCC-M mensal", _serie_incc(linhas), em_percentual=True)],
+        categoria=Categoria.INSIGHT,
+        rodape=(f"Fonte FGV IBRE / BCB (SGS) · competência "
+                f"{atual['data_id'].strftime('%m/%Y')} · "
+                f"{len(linhas)} meses na série"),
+    )
+
+
+def montar_incc_horizonte(linhas: list[dict]) -> Optional[Relatorio]:
+    """Ângulo 8 — o horizonte longo, que o número do mês não mostra.
+
+    0,66% no mês parece pouco; o acumulado em 36 meses é outro valor. É o
+    ângulo que impede a leitura "custo parado" de quem só viu a variação
+    mensal — que é o número que aparece primeiro em todo relatório.
+    """
+    atual = next((r for r in linhas if r.get("y12_m") is not None), None)
+    if not atual:
+        return None
+    linhas = _enriquecer_com_overview(linhas)
+
+    def _p(v) -> Optional[str]:
+        return None if v is None else pct(Decimal(str(v)) / Decimal(100))
+
+    p12, p24, p36 = _p(atual.get("y12_m")), _p(atual.get("m24_m")), _p(atual.get("m36_m"))
+    ytd = _p(atual.get("ytd_m"))
+    # Sem 36m na fonte, o título não pode prometê-lo.
+    janela = "12 meses" if p36 is None else "36 meses"
+
+    return Relatorio(
+        chave="incc_horizonte_36m",
+        titulo=(f"Em {janela} o INCC-M acumula {p36 or p12}"),
+        resumo=(f"A variação mensal de {pct(atual['var_m'] or 0)} em "
+                f"{atual['data_id'].strftime('%m/%Y')} parece pequena. "
+                f"Acumulado, são {p12} em 12 meses"
+                + (f" e {p36} em 36 meses" if p36 else "")
+                + " — o mesmo dado lido na escala em que o contrato de "
+                  "reajuste trabalha."),
+        blocos=[Bloco(
+            metricas=[
+                Metrica("Acumulado 12 meses", p12, destaque=True,
+                        detalhe="ago/2025 → ago/2026"),
+                Metrica("Acumulado 24 meses", p24, destaque=True,
+                        variacao="▲" if (atual.get("m24_m") or 0) > 0 else None),
+                Metrica("Acumulado 36 meses", p36, destaque=True),
+                Metrica("Acumulado no ano (YTD)", ytd),
+                Metrica("Variação do mês", pct(atual["var_m"] or 0),
+                        detalhe="o número que aparece primeiro"),
+            ],
+            texto=("Quem orça só com o número recente subestima o histórico. "
+                   "A variação mensal é o que muda rápido — e o que mais "
+                   "engana."),
+        )],
+        series=[Serie("INCC-M mensal", _serie_incc(linhas), em_percentual=True)],
+        categoria=Categoria.INSIGHT,
+        rodape=(f"Fonte FGV IBRE / BCB (SGS) · competência "
+                f"{atual['data_id'].strftime('%m/%Y')}"),
+    )
+
+
 def nota_incc_atual(linhas: list[dict]) -> Optional[str]:
     """Rodapé de estado — o que o INCC está fazendo, sem prometer número novo."""
     linhas = list(linhas)
