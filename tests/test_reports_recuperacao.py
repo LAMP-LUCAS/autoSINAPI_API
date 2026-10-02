@@ -106,9 +106,30 @@ def test_promo_nao_manda_antes_do_padrao():
     assert decidir_promo(_c(dias_sem_promocao=PROMO_PADRAO_DIAS - 1)) is None
 
 
-def test_promo_nao_manda_na_primeira_vez():
-    """Sem histórico, não abre com disparo — o padrão é o mais espaçado."""
+def test_promo_espera_um_ciclo_da_trilha_antes_da_primeira():
+    """Sem nada recebido antes, não abre com disparo.
+
+    Exigir histórico de *promoção* seria circular — a primeira é a que cria o
+    histórico, então o impasse nunca acabaria. O corte é um ciclo da trilha:
+    relatório **e** artigo.
+    """
     assert decidir_promo(_c(dias_sem_promocao=None)) is None
+    assert decidir_promo(_c(dias_sem_promocao=None,
+                            etapas_enviadas=("incc_leitura_mes",))) is None
+    assert decidir_promo(_c(dias_sem_promocao=None,
+                            etapas_enviadas=("kb_curva_abc",))) is None
+
+
+def test_primeira_promo_apos_o_ciclo_completo():
+    c = _c(dias_sem_promocao=None,
+           etapas_enviadas=("incc_leitura_mes", "kb_curva_abc"))
+    assert decidir_promo(c) == "promo"
+
+
+def test_winback_sozinho_nao_abre_a_promocao():
+    """Recuperação não é conteúdo — não vale como ciclo."""
+    c = _c(dias_sem_promocao=None, etapas_enviadas=("winback_30d",))
+    assert decidir_promo(c) is None
 
 
 def test_promo_nao_repete_mesmo_tendo_passado_o_padrao():

@@ -91,6 +91,24 @@ class ContextoRecuperacao:
     def ja_enviou(self, step: str) -> bool:
         return step in self.etapas_enviadas
 
+    @property
+    def trilha_completada(self) -> bool:
+        """Já atravessou um ciclo inteiro da trilha de conteúdo.
+
+        Um ciclo é **relatório + artigo**: os dois-touchpoints que a trilha
+        entrega por semana. Exigir os dois antes da primeira promoção é o que
+        dá "histórico" ao corte sem criar impasse — exigir histórico de
+        promoção seria circular, porque a primeira é justamente a que cria o
+        histórico.
+        """
+        passos = set(self.etapas_enviadas)
+        tem_artigo = any(p.startswith("kb_") for p in passos)
+        # As chaves de relatório são as do registro (`incc_leitura_mes`,
+        # `cub_dispersao`, ...); o que não é artigo nem recuperação é relatório.
+        outros = passos - {STEP_PROMO, STEP_WINBACK.get(30), STEP_WINBACK.get(45)}
+        tem_relatorio = any(not p.startswith("kb_") for p in outros)
+        return tem_artigo and bool(tem_relatorio)
+
 
 def decidir_winback(c: ContextoRecuperacao) -> Optional[str]:
     """Passo de recuperação a enviar, ou `None`.
@@ -129,9 +147,10 @@ def decidir_promo(c: ContextoRecuperacao) -> Optional[str]:
 
     dias = c.dias_sem_promocao
     if dias is None:
-        # Nunca houve promoção: a primeira respeita o padrão mais espaçado,
-        # para não abrir com um mapa de disparos.
-        return None
+        # Primeira promoção: só depois de um ciclo completo da trilha. Antes
+        # disso a pessoa nunca recebeu nada nosso, e promoção para lead frio é
+        # exatamente o e-mail que marca spam.
+        return STEP_PROMO if c.trilha_completada else None
     return STEP_PROMO if dias >= PROMO_PADRAO_DIAS else None
 
 
