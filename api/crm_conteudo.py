@@ -28,12 +28,14 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .admin_auth import verify_admin_token
-from .database import get_saas_db
+from .database import SaasSessionLocal, get_saas_db
 from .reports import registro
 from .reports.fontes import nota_incc_atual
 from .reports.model import Categoria, Contexto, Relatorio
+from .reports.recoveredor import ContextoRecuperacao
 from .reports.roteiro import EstadoSemana, Roteiro
 from .reports.render import assunto_de, renderizar
+from .reports.recoveredor import decidir_promo, decidir_winback
 
 logger = logging.getLogger("autosinapi.crm.conteudo")
 router = APIRouter(tags=["Admin", "CRM"],
@@ -97,6 +99,44 @@ def _contexto_lead(db: Session, lead_id: str) -> Optional[Contexto]:
     ), tuple(assinaturas)
 
 
+@router.get("/api/v1/admin/crm/conteudo/elegiveis",
+            summary="Leads a considerar no slot de hoje")
+def leads_elegiveis(hoje: Optional[str] = Query(None),
+                    db: Session = Depends(get_saas_db)) -> dict:
+    """Quem o workflow deve consultar hoje.
+
+    A elegibilidade fina (cadência, teto, dado parado) fica em `decidir` — aqui
+    vai só o **recorte grosso**, para o workflow não carregar a base inteira a
+    cada dia. Duplicar o filtro aqui e lá seria duas regras que divergem.
+    """
+    from .reports.grade import slot_do_dia
+    dia = _dt.date.fromisoformat(hoje) if hoje else _dt.date.today()
+    slot = slot_do_dia(dia)
+
+    rows = db.execute(text("""
+        -- Sem JOIN em `clients`: quem nunca virou cliente é justamente o
+        -- público do nurture, e um JOIN os apagaria da fila. O filtro de
+        -- teste do cliente, quando existir, é aplicado por EXISTS.
+        SELECT l.id
+          FROM saas.leads l
+         WHERE l.status IN ('contacted','qualified')
+           AND l.deleted_at IS NULL
+           AND COALESCE(l.is_test, FALSE) = FALSE
+           AND COALESCE(l.metadata->>'marketing_optin', 'true') = 'true'
+           AND (l.last_activity_at IS NULL
+                OR l.last_activity_at >= NOW() - INTERVAL '180 days')
+           AND NOT EXISTS (SELECT 1 FROM saas.clients c
+                            WHERE lower(c.email) = lower(l.email)
+                              AND c.deleted_at IS NULL
+                              AND COALESCE(c.is_test, FALSE) = TRUE)
+    """)).scalars().all()
+
+    return {"hoje": dia.isoformat(),
+            "slot": slot.tipo if slot else None,
+            "lead_ids": [str(r) for r in rows],
+            "total": len(rows)}
+
+
 @router.post("/api/v1/admin/crm/conteudo/decidir",
              summary="Decide e reserva o conteúdo de um lead")
 def decidir_conteudo(
@@ -121,6 +161,8 @@ def decidir_conteudo(
             montar_relatorio=lambda c: registro.montar(c, ctx_atual[0], ultima_comp),
             houve_novidade=lambda: _houve_novidade(db, ultima_comp),
             montar_artigo=_montar_artigo,
+            montar_winback=_montar_winback,
+            montar_promo=_montar_promo,
         )
 
     decisoes = []
@@ -225,6 +267,125 @@ def _competencia_atual() -> Optional[str]:
         return (base or {}).get("competencia")
     except Exception:
         return None
+
+
+# Consumo: uso da API e leitura do portal. O `min` dos dois é o que vale —
+# atividade em qualquer canal significa lead ativo (decisão do usuário).
+SQL_CONSUMO = """
+    SELECT EXTRACT(DAY FROM (now() - MAX(u.requested_at)))::int AS dias_api
+      FROM saas.usage_logs u
+     WHERE u.client_id IN (SELECT c.id FROM saas.clients c
+                           WHERE lower(c.email) = lower(:email)
+                             AND c.deleted_at IS NULL)
+"""
+SQL_CONSUMO_PORTAL = """
+    SELECT EXTRACT(DAY FROM (now() - GREATEST(
+             COALESCE(l.last_activity_at, l.created_at), l.created_at)))::int
+      FROM saas.leads l
+     WHERE lower(l.email) = lower(:email) AND l.deleted_at IS NULL
+"""
+
+
+def _contexto_recuperacao(db: Session, ctx: Contexto) -> ContextoRecuperacao:
+    """Monta o contexto de recuperação a partir do banco.
+
+    `dias_sem_consumo_portal` usa `last_activity_at` da **tabela de leads**,
+    que o portal alimenta via captura e a ponte via envio. É proxy de leitura
+    do portal; não existe evento de pageview no banco, e inventar um seria
+   Persistir páginas vistas de todo visitante sem necessidade.
+    """
+    api = db.execute(text(SQL_CONSUMO), {"email": ctx.email}).scalar()
+    portal = db.execute(text(SQL_CONSUMO_PORTAL), {"email": ctx.email}).scalar()
+    promo = db.execute(text("""
+        SELECT EXTRACT(DAY FROM (now() - MAX(sent_at)))::int
+          FROM saas.nurture_state
+         WHERE lead_id = :id AND step = 'promo' AND status = 'sent'
+    """), {"id": ctx.lead_id}).scalar()
+
+    pagante = db.execute(text("""
+        SELECT EXISTS (SELECT 1 FROM saas.subscriptions s
+                         JOIN saas.clients c ON c.id = s.client_id
+                        WHERE lower(c.email) = lower(:email)
+                          AND s.status = 'active' AND s.deleted_at IS NULL
+                          AND COALESCE(c.is_test, FALSE) = FALSE)
+    """), {"email": ctx.email}).scalar()
+
+    return ContextoRecuperacao(
+        lead_id=ctx.lead_id, email=ctx.email, eh_cliente_pagante=bool(pagante),
+        dias_sem_consumo_api=int(api) if api is not None else None,
+        dias_sem_consumo_portal=int(portal) if portal is not None else None,
+        etapas_enviadas=ctx.etapas_enviadas,
+        consentimento=ctx.consentimento_marketing,
+        dias_sem_promocao=int(promo) if promo is not None else None,
+    )
+
+
+def _texto_recuperacao(step: str, cr, ctx: Contexto) -> str:
+    """Corpo da recuperação/promoção, montado do número — não do modelo."""
+    from .reports.fontes import num
+    dias = cr.dias_sem_consumo
+    if step == "winback_30d":
+        return (f"Vi que você não usa as ferramentas há {num(Decimal(dias), 0)} dias. "
+                "Se algo travou ou sobrou dúvida, a resposta é rápida — e o "
+                "material da base de conhecimento continua aberto.")
+    if step == "winback_45d":
+        return ("Faz {d} dias que você não volta. Não é cobrança: é só uma "
+                "conta de que a ferramenta continua aqui se fizer sentido.").format(
+                    d=int(dias) if dias is not None else "?")
+    return ("Campanha do mês: o que há de novo nas ferramentas do ecossistema, "
+            "e o que dá para fazer com elas.")
+
+
+# Estado de recuperação por lead, montado uma vez por requisição. Sem cache,
+# cada lead abriria a própria sessão — e o `decidir` roda sobre vários.
+_RECUP: dict = {}
+
+
+def _montar_winback(ctx: Contexto) -> Optional[dict]:
+    """Slot de recuperação (4ª-feira).
+
+    `None` quando este lead não é elegível. A elegibilidade é por **lead**,
+    não global: o roteiro decide um por vez, e só quem tem marco pendente
+    ocupa a vaga.
+    """
+    cr = _RECUP.get(ctx.lead_id)
+    if cr is None:
+        with SaasSessionLocal() as db:
+            cr = _contexto_recuperacao(db, ctx)
+        _RECUP[ctx.lead_id] = cr
+    step = decidir_winback(cr)
+    if step is None:
+        return None
+    return _registro_recuperacao(step, cr, ctx)
+
+
+def _montar_promo(ctx: Contexto) -> Optional[dict]:
+    """Slot de promoção (2ª/6ª). Só não-pagante, espaçada."""
+    cr = _RECUP.get(ctx.lead_id)
+    if cr is None:
+        with SaasSessionLocal() as db:
+            cr = _contexto_recuperacao(db, ctx)
+        _RECUP[ctx.lead_id] = cr
+    step = decidir_promo(cr)
+    if step is None:
+        return None
+    return _registro_recuperacao(step, cr, ctx)
+
+
+def _registro_recuperacao(step: str, cr, ctx: Contexto) -> dict:
+    """Formato comum ao roteiro: `chave`, `titulo`, `descricao`, `url`.
+
+    `chave` é o passo — vira `nurture_state.step`, e é o `UNIQUE (lead_id,
+    step)` que impede reenviar a mesma etapa de recuperação.
+    """
+    titulo = ("Voltamos a falar com você" if step.startswith("winback")
+              else "O que há de novo no ecossistema")
+    return {
+        "chave": step, "titulo": titulo,
+        "descricao": _texto_recuperacao(step, cr, ctx),
+        "url": "https://mundoaec.com/ferramentas",
+        "nivel": 0,
+    }
 
 
 def _estado(db: Session, lead_id: str, ctx: Contexto) -> EstadoSemana:

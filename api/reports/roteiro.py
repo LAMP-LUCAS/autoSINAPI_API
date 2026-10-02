@@ -60,9 +60,15 @@ class Roteiro:
 
     def __init__(self, *, montar_relatorio: Callable[[str], Optional[Relatorio]],
                  houve_novidade: Callable[[], bool],
-                 montar_artigo: Optional[Callable[[Contexto], Optional[Relatorio]]] = None):
+                 montar_artigo: Optional[Callable[[Contexto], Optional[Relatorio]]] = None,
+                 montar_winback: Optional[Callable[[Contexto], Optional[Relatorio]]] = None,
+                 montar_promo: Optional[Callable[[Contexto], Optional[Relatorio]]] = None):
         self._montar = montar_relatorio
         self._novidade = houve_novidade
+        # Winback e promo são vagas do 3º slot: se não houver recuperação nem
+        # promoção elegível, o slot simplesmente não dispara — nunca "cai" para
+        # o relatório, que pertence ao slot de terça.
+        self._vagas = {"winback": montar_winback, "promo": montar_promo}
         # O slot de artigo é uma trilha separada, com fonte própria: o
         # relatório e o artigo não disputam o mesmo eixo. Sem isto, a quinta
         # entregava o relatório de terça — e o lead maduro recebia 1/semana
@@ -142,11 +148,18 @@ class Roteiro:
         if slot.tipo == "artigo":
             return self._decidir_artigo(ctx, slot)
         if slot.tipo in ("winback", "promo"):
-            # Slot móvel do 3º lugar. Sem montador, não dispara — e o
-            # relatório de conteúdo não é usado para eles.
-            return Decisao(False,
-                           motivo=f"slot {slot.tipo} sem montador configurado",
-                           slot=slot.tipo)
+            montar = self._vagas.get(slot.tipo)
+            if montar is None:
+                return Decisao(False,
+                               motivo=f"slot {slot.tipo} sem montador configurado",
+                               slot=slot.tipo)
+            vago = montar(ctx)
+            if vago is None:
+                return Decisao(False,
+                               motivo=f"nenhum lead elegível a {slot.tipo}",
+                               slot=slot.tipo)
+            return Decisao(True, relatorio=vago, slot=slot.tipo,
+                           motivo=f"slot {slot.tipo} liberado")
 
         rel = self._montar(chave)
         if rel is None:
