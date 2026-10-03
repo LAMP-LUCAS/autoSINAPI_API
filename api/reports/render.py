@@ -121,13 +121,31 @@ def _texto_bloco(b: Bloco) -> str:
     return "".join(partes)
 
 
-def _graficos(series: Sequence[Serie]) -> str:
-    if not series:
-        return ""
+def _svg(series: Sequence[Serie]) -> str:
+    """Só o markup do gráfico, **sem** o wrapper de layout.
+
+    O `<div>` de `_graficos` é layout do HTML gerado em Python. Quando o
+    relatório viaja como variáveis para o MessageDispatcher, quem monta o
+    layout é o template — então o que sai daqui é o SVG cru, embutido com
+    `{{ grafico_svg }}` (o renderizador do MD não escapa HTML).
+
+    Escolha registrada: SVG como variável + tabela montada no template. O SVG
+    sozinho não basta porque Gmail/Outlook removem `<svg>` do corpo; a tabela
+    numérica é a fonte da verdade e o gráfico é o reforço.
+    """
     if len(series) >= 2 and not series[0].vazia and not series[1].vazia:
-        return f'<div style="margin:0 0 16px">{charts.duas_seris(series[0], series[1])}</div>'
-    return "".join(f'<div style="margin:0 0 16px">{charts.linha_serie(s)}</div>'
-                   for s in series if not s.vazia)
+        return charts.duas_seris(series[0], series[1])
+    return "".join(charts.linha_serie(s) for s in series if not s.vazia)
+
+
+def _graficos(series: Sequence[Serie]) -> str:
+    svg = _svg(series)
+    return f'<div style="margin:0 0 16px">{svg}</div>' if svg else ""
+
+
+def svg_do_relatorio(rel: Relatorio) -> str:
+    """SVG inline do relatório, pronto para a variável `grafico_svg`."""
+    return _svg(rel.series)
 
 
 def nota_incc(nota: Optional[str]) -> str:
@@ -201,4 +219,5 @@ def assunto_de(rel: Relatorio) -> str:
     return rel.titulo[:78]
 
 
-__all__ = ["renderizar", "assunto_de", "nota_incc", "COR_LINHA_ACAO"]
+__all__ = ["renderizar", "assunto_de", "nota_incc", "svg_do_relatorio",
+           "COR_LINHA_ACAO"]

@@ -53,6 +53,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .database import get_saas_db
+from .links import PORTAL_URL, TOOLS_URL
 from .schemas import _RATE_LIMIT_RESPONSE
 
 logger = logging.getLogger("autosinapi.public_leads")
@@ -83,7 +84,7 @@ _MAX_EMAILS_PER_HOUR = 5
 # chamada, porque o sintoma de errar é silencioso: a OS sai `sent` com o
 # template genérico e o cliente só percebe ao abrir a caixa.
 LEAD_WELCOME_TEMPLATE_ID = "66666666-6666-6666-6666-666666666666"
-PORTAL_URL = "https://mundoaec.com"
+
 # Tempo máximo de espera pelo MD. Acima disso o lead já está salvo e a resposta
 # não pode esperar: a captura é o que importa.
 _MD_TIMEOUT_S = 2.0
@@ -239,7 +240,11 @@ def _mailer():
             variables={
                 "lead_name": name or "Lead",
                 "portal_url": portal,
-                "tools_url": f"{portal}/ferramentas",
+                # SSOT única (`api/links.py`). Este literal já foi
+                # `.../ferramentas` — HTTP 404 no primeiro e-mail que um lead
+                # recebe — e ninguém pego, porque nenhum contrato cobria este
+                # produtor.
+                "tools_url": TOOLS_URL,
             },
             # Um e-mail de boas-vindas por lead. O dedupe de lead evita duas
             # linhas no banco, mas o envio acontece na mesma requisição — sem

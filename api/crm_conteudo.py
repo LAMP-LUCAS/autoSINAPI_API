@@ -35,15 +35,27 @@ from .reports.fontes import nota_incc_atual
 from .reports.model import Categoria, Contexto, Relatorio
 from .reports.recoveredor import ContextoRecuperacao
 from .reports.roteiro import EstadoSemana, Roteiro
-from .reports.render import assunto_de, renderizar
+from .links import AGENDA_URL, PORTAL_URL, TOOLS_URL
+from .reports.render import renderizar, svg_do_relatorio
 from .reports.recoveredor import decidir_promo, decidir_winback
 
 logger = logging.getLogger("autosinapi.crm.conteudo")
 router = APIRouter(tags=["Admin", "CRM"],
                    dependencies=[Depends(verify_admin_token)])
 
-TEMPLATE_ID = "f4444444-4444-4444-4444-444444444444"   # gateway_kb_digest
-TEMPLATE_ARTIGO = "66666666-6666-6666-6666-666666666666"  # gateway_lead_welcome
+# Funil de conteúdo: **um template por slot**, e o slot é quem escolhe.
+# SSOT do que existe: `saas-gateway/emails/registry.yaml`; o teste
+# `saas-gateway/tests/test_email_funnel_slots.py` compara os dois lados.
+#
+# `gateway_lead_welcome` (66666666) NÃO aparece aqui — é exclusivo da
+# captura (`public_leads.LEAD_WELCOME_TEMPLATE_ID`). Ele foi usado pelo slot
+# de artigo e foi por isso que o artigo "não era enviado": o template
+# declara `lead_name, portal_url, tools_url`, o produtor lhe passava
+# `article_*` sem `portal_url`, e o href `{{ portal_url }}/app/sinapi` saía
+# relativo — link morto — enquanto o título e a URL do artigo eram
+# descartados pelo render.
+TEMPLATE_RELATORIO = "f5555555-5555-5555-5555-555555555555"  # gateway_report_weekly
+TEMPLATE_ARTIGO = "f4444444-4444-4444-4444-444444444444"     # gateway_kb_digest
 
 # Templates de recuperação e promoção. Antes, os dois caíam no ramo "artigo" e
 # saíam com o assunto "— Knowledge Base" e as variáveis `article_*`: o corpo
@@ -62,12 +74,24 @@ TEMPLATE_PROMO = "99999999-9999-9999-9999-999999999999"        # gateway_promo_w
 # sem eles o e-mail sai como "Volte com % off ... use o cupom .".
 WINBACK_DESCONTO = _os.getenv("WINBACK_DESCONTO_PCT", "30")
 WINBACK_CUPOM = _os.getenv("WINBACK_CUPOM", "VOLTEI30")
-WINBACK_VALIDADE_DIAS = _os.getenv("WINBACK_VALIDADE_DIAS", "30")
+# `validade_dias` foi removido em 03/10: nenhuma das 18 entradas do
+# `registry.yaml` o declara e nenhum body o usa — era variável enviada ao
+# nada, e o teste de contrato (vars iguais às declaradas) agora reprova
+# qualquer sobra desse tipo.
 
-UNSUBSCRIBE = "https://autosinapi.mundoaec.com/preferencias"
-TOOLS_URL = "https://mundoaec.com/ferramentas"
-PORTAL_URL = "https://mundoaec.com"
-AGENDA_URL = "https://mundoaec.com/contato"
+# `UNSUBSCRIBE` também saiu daqui em 03/10, na Fase 2. O link de preferências
+# é do **rodapé compartilhado** que o `EmailSmtpAdapter` aplica a todos os
+# e-mails (Fase 2), e a URL assinada é calculada pelo `SendOS` a partir de
+# `MD_PUBLIC_URL`. O produtor mantinha uma cópia estática sem token — que
+# apontava para o host errado e, mesmo corrigida, daria 404 por design
+# (anti-enumeração sem `?tk=`, ADR-0011). O footer é atributo do
+# transportador: nenhum template o declara e nenhum produtor o envia.
+
+# ── URLs do produtor ────────────────────────────────────────────────────────
+# SSOT: `api/links.py` — módulo único, lido também por `public_leads`, que
+# antes repetia o literal com path errado. Mantidos re-exportados aqui
+# porque `test_producer_contract.py` e `test_crm_envelope_slot.py` importam
+# por este caminho.
 
 # Quanto tempo um claim vale antes de outro worker poder tomá-lo. Uma só fonte:
 # `_reservar` decide quem reenvia e `orfaos` reporta quem ficou preso — se
@@ -270,8 +294,7 @@ def decidir_conteudo(
         reservado = _reservar(db, ctx.lead_id,
                                dec.relatorio.chave if isinstance(dec.relatorio, Relatorio)
                                else dec.relatorio["chave"],
-                               TEMPLATE_ID if isinstance(dec.relatorio, Relatorio)
-                               else TEMPLATE_ARTIGO)
+                               _template_do_slot(dec.slot))
         if not reservado:
             decisoes.append({"lead_id": lead_id, "enviar": False,
                              "motivo": "passo já reservado por outro worker"})
@@ -459,7 +482,7 @@ def _registro_recuperacao(step: str, cr, ctx: Contexto) -> dict:
     return {
         "chave": step, "titulo": titulo,
         "descricao": _texto_recuperacao(step, cr, ctx),
-        "url": "https://mundoaec.com/ferramentas",
+        "url": TOOLS_URL,
         "nivel": 0,
     }
 
@@ -507,6 +530,40 @@ def _reservar(db: Session, lead_id: str, chave: str, tpl: str) -> Optional[dict]
     return {"step": row} if row else None
 
 
+def _template_do_slot(slot) -> str:
+    """Template do slot — e só dele.
+
+    Fechado de propósito: um slot novo obriga a decidir o template aqui e a
+    declará-lo no `registry.yaml`, em vez de cair num ramo por acaso do tipo
+    do objeto. O teste `test_email_funnel_slots.py` compara os dois lados.
+    """
+    if slot == "enriquecimento":
+        return TEMPLATE_RELATORIO
+    if slot == "artigo":
+        return TEMPLATE_ARTIGO
+    if slot == "winback":
+        return TEMPLATE_REENGAGEMENT
+    if slot == "promo":
+        return TEMPLATE_PROMO
+    # Falhar alto é o que queremos: um slot desconhecido não pode mandar
+    # e-mail errado em silêncio — e `/decidir` retornando 500 não envia nada.
+    raise ValueError(f"slot sem template definido: {slot!r}")
+
+
+def _metricas_planas(rel: Relatorio) -> list:
+    """Tabela numérica do relatório, achata — é ela a fonte da verdade.
+
+    Todos os 9 relatórios do catálogo construem um único `Bloco`, então
+    achat aqui não perde nada; achata sempre, porque um segundo bloco no
+    futuro não pode sumir do e-mail. O gráfico é o reforço e o Gmail/Outlook
+    removem `<svg>` — sem a tabela o e-mail sairia sem nenhum número.
+    """
+    return [{"rotulo": m.rotulo, "valor": m.valor,
+             "detalhe": m.detalhe or "", "variacao": m.variacao or "",
+             "destaque": bool(m.destaque)}
+            for b in rel.blocos for m in b.metricas]
+
+
 def _envelope(slot: str, rel, titulo: str, html: str,
               ctx: Contexto) -> dict:
     """Template, tópico, assunto e variáveis — decididos pelo **slot**.
@@ -516,29 +573,35 @@ def _envelope(slot: str, rel, titulo: str, html: str,
     ramo do artigo e saíam como "Knowledge Base" com `article_*` — sem erro,
     sem log, só um e-mail que não é o que ninguém desenhou.
 
-    Cada template recebe exatamente as variáveis que o `registry.yaml` declara
-    para ele; o resto é o motivo de existirem `topic` e `vars` separados.
+    O mesmo buraco, do lado contrário: o **artigo** foi parar no
+    `gateway_lead_welcome`, que declara `lead_name, portal_url, tools_url` e
+    não tem `article_*`. O href `{{ portal_url }}/app/sinapi` saía relativo e
+    o artigo não era enviado — verificado em 03/10.
+
+    Cada template recebe **exatamente** as variáveis que o `registry.yaml`
+    declara para ele; o resto é o motivo de existirem `topic` e `vars`
+    separados. Sobra esconde drift, falta quebra o render.
     """
+    template = _template_do_slot(slot)
+
     if slot == "winback":
         return {
-            "template_id": TEMPLATE_REENGAGEMENT,
+            "template_id": template,
             "topic": "gateway.reengagement",
             "assunto": f"{ctx.nome}, seu acesso continua ativo",
             "vars": {
                 "lead_name": ctx.nome,
                 "desconto": WINBACK_DESCONTO,
                 "cupom": WINBACK_CUPOM,
-                "validade_dias": WINBACK_VALIDADE_DIAS,
                 "portal_url": PORTAL_URL,
                 "agenda_url": AGENDA_URL,
-                "unsubscribe_url": UNSUBSCRIBE,
             },
         }
 
     if slot == "promo":
         competencia, destaque = registro.panorama_incc()
         return {
-            "template_id": TEMPLATE_PROMO,
+            "template_id": template,
             "topic": "gateway.update_incc",
             "assunto": (f"Panorama do INCC — {competencia}" if competencia
                         else "O que há de novo nas ferramentas"),
@@ -548,25 +611,47 @@ def _envelope(slot: str, rel, titulo: str, html: str,
                 "destaque": destaque,
                 "portal_url": PORTAL_URL,
                 "tools_url": TOOLS_URL,
-                "unsubscribe_url": UNSUBSCRIBE,
             },
         }
 
-    if isinstance(rel, Relatorio):
-        return {"template_id": TEMPLATE_ID, "topic": "gateway.kb_digest",
-                "assunto": assunto_de(rel),
-                "vars": {"lead_name": ctx.nome, "article_title": titulo,
-                         "article_description": rel.blocos[0].texto or "",
-                         "article_url": _url_do_relatorio(rel),
-                         "tools_url": TOOLS_URL,
-                         "unsubscribe_url": UNSUBSCRIBE}}
-
-    return {"template_id": TEMPLATE_ARTIGO, "topic": "gateway.lead_welcome",
+    if slot == "artigo":
+        if not isinstance(rel, dict):
+            raise ValueError(f"slot 'artigo' espera dict, veio {type(rel).__name__}")
+        return {
+            "template_id": template,
+            "topic": "gateway.kb_digest",
             "assunto": f"{titulo} — Knowledge Base",
             "vars": {"lead_name": ctx.nome, "article_title": titulo,
                      "article_description": rel.get("descricao", ""),
                      "article_url": rel.get("url", ""),
-                     "tools_url": TOOLS_URL, "unsubscribe_url": UNSUBSCRIBE}}
+                     "tools_url": TOOLS_URL},
+        }
+
+    # slot == "enriquecimento" — o relatório semanal.
+    if not isinstance(rel, Relatorio):
+        raise ValueError(
+            f"slot 'enriquecimento' espera Relatorio, veio {type(rel).__name__}")
+    return {
+        "template_id": template,
+        "topic": "gateway.report_weekly",
+        # O `subject_liquid` do registry (`{{ titulo }}`) tem precedência no
+        # `SendOS`; este fica como fallback para o caso de o template ir sem
+        # assunto. Sem emoji e sem ser extenso — decisão registrada.
+        "assunto": titulo,
+        "vars": {
+            "lead_name": ctx.nome,
+            "titulo": titulo,
+            "resumo": rel.resumo or "",
+            "texto": next((b.texto for b in rel.blocos if b.texto), ""),
+            "nota": next((b.nota for b in rel.blocos if b.nota), ""),
+            "metricas": _metricas_planas(rel),
+            "grafico_svg": svg_do_relatorio(rel),
+            "serie_rotulo": rel.series[0].rotulo if rel.series else "",
+            "rodape": rel.rodape or "",
+            "link_relatorio": _url_do_relatorio(rel),
+            "tools_url": TOOLS_URL,
+        },
+    }
 
 
 def _html(rel, ctx: Contexto) -> str:
@@ -605,8 +690,35 @@ def _html_artigo(art: dict, ctx: Contexto) -> str:
                       texto_link="Ler o artigo completo")
 
 
+# Destino do CTA do relatório por família de índice — só destinos que o gate
+# de URL confirma com 200 (`/tools/incc`, `/tools/cub`, `/app/sinapi`,
+# `/tools`). O relatório não tem página própria: **ele é o e-mail**.
+_URL_CTA_POR_FAMILIA = (
+    ("incc_", f"{TOOLS_URL}/incc"),
+    ("cub_", f"{TOOLS_URL}/cub"),
+    ("sinapi_", f"{PORTAL_URL}/app/sinapi"),
+)
+
+
 def _url_do_relatorio(rel: Relatorio) -> str:
-    return f"https://mundoaec.com/kb/{rel.chave}"
+    """Destino do CTA do relatório — um destino que existe.
+
+    Antes era `https://mundoaec.com/kb/{rel.chave}`. As 9 chaves da trilha
+    (`incc_leitura_mes`, `sinapi_competencia`, `cub_dispersao`…) **não são
+    slug de KB** — `/kb/` só aceita os 109 artigos do catálogo — e as 9
+    davam 404: o botão "Abrir a análise completa" era link morto no e-mail
+    de terça, toda semana. Verificado em 03/10.
+
+    `rel.chave` identifica o *relatório*, não uma página. Como o relatório
+    não tem página, o CTA leva à ferramenta do índice que ele mede, com
+    fallback para o índice de ferramentas. Os quatro destinos são os
+    únicos com 200 confirmado.
+    """
+    chave = (rel.chave or "").lower()
+    for familia, destino in _URL_CTA_POR_FAMILIA:
+        if chave.startswith(familia):
+            return destino
+    return TOOLS_URL
 
 
 @router.post("/api/v1/admin/crm/conteudo/{lead_id}/confirmar",
