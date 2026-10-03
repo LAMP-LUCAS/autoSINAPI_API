@@ -109,15 +109,23 @@ checou que `catalogo[].url == f"https://mundoaec.com/kb/{slug}/"` e
 | Promoção só para assinantes pagantes, no máximo a cada 15 dias, 2ª ou 6ª | `grade.py` |
 | Passo único — `UNIQUE (lead_id, step)` | `_reservar()` + `ON CONFLICT` |
 
-> **Limitação conhecida e medida (03/10):** `SQL_CONSUMO_APP` e
-> `SQL_CONSUMO_PORTAL` são **idênticas** (mesmo sha1) porque **não existe
-> evento de login** — `leads.last_activity_at` só é movido pela ponte de
-> envio de formulário e por ação manual. Nos 32 leads reais a cascata diverge
-> do `min(api, portal)` antigo em **zero** casos: é um no-op até o app emitir
-> sinal próprio.
+> **O sinal de login existe (03/10).** `GET /api/v1/public/portal/me` — a
+> chamada que o app faz ao abrir, já com a chave validada — grava um evento
+> `portal_login` em `saas.client_events`, com auto-limitação de 12 h para não
+> virar carga de escrita a cada abertura de tela. `SQL_CONSUMO_APP` lê esse
+> evento, então **os dois sinais têm origens distintas** e a cascata deixou de
+> ser no-op (sha1 `3d9eb23b…` × `96c1309b…`).
 >
-> O degrau de 45 dias **é** alcançável — `now() - created_at` cresce todo dia.
-> Uma versão anterior deste documento afirmava o contrário; a medição refutou.
+> Duas decisões que não são óbvias:
+>
+> - **Vai para `client_events`, não para `leads`.** `last_activity_at` é a
+>   mesma coluna que o portal escreve pela ponte de formulário; gravar login
+>   lá fundiria os dois sinais com nomes diferentes.
+> - **O `commit` mora no helper.** `get_saas_db` só faz `close()`: escrita sem
+>   commit é revertida no fim da requisição. Foi o que aconteceu na primeira
+>   verificação — endpoint 200, evento inexistente, e o `except` do
+>   best-effort escondendo o sintoma. O teste do sinal usa um double que
+>   simula rollback de verdade por isso.
 
 ## 5. Como o contrato é detido
 

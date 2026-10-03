@@ -36,6 +36,10 @@ from .reports.model import Categoria, Contexto, Relatorio
 from .reports.recoveredor import ContextoRecuperacao
 from .reports.roteiro import EstadoSemana, Roteiro
 from .links import AGENDA_URL, PORTAL_URL, TOOLS_URL
+# `EVENTO_LOGIN_APP` é SSOT do outro lado: quem **grava** é o `portal/me`.
+# Importar em vez de repetir o literal é o que impede o leitor da cascata
+# de procurar um tipo de evento que o app nunca escreve.
+from .portal import EVENTO_LOGIN_APP
 from .reports.render import renderizar, svg_do_relatorio
 from .reports.recoveredor import decidir_promo, decidir_winback
 
@@ -386,20 +390,22 @@ SQL_CONSUMO_PORTAL = """
      WHERE lower(l.email) = lower(:email) AND l.deleted_at IS NULL
 """
 
-# Login no app — o sinal **canônico**. Login não é chamada de API: é o ato de
-# abrir o produto. Quem paga assinante e só navega (sem integrador, sem
+# Login no app — o sinal **canônico**. Login não é chamada de API: é o ato
+# de abrir o produto. Quem paga assinante e só navega (sem integrador, sem
 # script) tem `usage_logs` vazio e aparecia como inativo, o que fazia o
 # winback falar com quem estava usando.
 #
-# Fonte: `leads.last_activity_at` só é movido pela **ponte** (envio de
-# formulário pelo portal). Quando essa ponte não roda, o sinal é o mesmo do
-# portal — degradado, nunca enganoso. Por isso ele entra como sinal
-# independente e não substitui os outros: a cascata escolhe o mais recente.
+# Lê `client_events` (gravado pelo `portal/me`), **não** `leads.last_activity_at`
+# — que é a mesma coluna que o portal escreve pela ponte de formulário. Ler
+# os dois da mesma fonte os tornaria idênticos e a cascata um no-op, que foi
+# exatamente o defeito medido antes de existir o evento de login.
 SQL_CONSUMO_APP = """
-    SELECT EXTRACT(DAY FROM (now() - GREATEST(
-             COALESCE(l.last_activity_at, l.created_at), l.created_at)))::int
-      FROM saas.leads l
-     WHERE lower(l.email) = lower(:email) AND l.deleted_at IS NULL
+    SELECT EXTRACT(DAY FROM (now() - MAX(e.occurred_at)))::int AS dias_app
+      FROM saas.client_events e
+      JOIN saas.clients c ON c.id = e.client_id
+     WHERE e.event_type = :evento
+       AND lower(c.email) = lower(:email)
+       AND c.deleted_at IS NULL
 """
 
 
@@ -413,7 +419,9 @@ def _contexto_recuperacao(db: Session, ctx: Contexto) -> ContextoRecuperacao:
     """
     api = db.execute(text(SQL_CONSUMO), {"email": ctx.email}).scalar()
     portal = db.execute(text(SQL_CONSUMO_PORTAL), {"email": ctx.email}).scalar()
-    app = db.execute(text(SQL_CONSUMO_APP), {"email": ctx.email}).scalar()
+    app = db.execute(text(SQL_CONSUMO_APP),
+                       {"email": ctx.email,
+                        "evento": EVENTO_LOGIN_APP}).scalar()
     promo = db.execute(text("""
         SELECT EXTRACT(DAY FROM (now() - MAX(sent_at)))::int
           FROM saas.nurture_state

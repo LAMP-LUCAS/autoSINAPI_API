@@ -19,6 +19,79 @@ router = APIRouter(tags=["tier_1", "Portal"])
 # virou `row["jti"]` e derrubou o endpoint com 500 em 2026-09-25.
 SSO_CLAIM_FIELDS = ("email", "client_id", "subscription_id", "key_id", "key_prefix")
 
+# Sinal de login do app — o marcador **canônico** de atividade do funil.
+#
+# O app é o que é pago; "entrou no produto" é o que distingue lead ativo de
+# lead frio. Antes não existia escritor de login: `leads.last_activity_at` só
+# era tocado pelo envio do formulário de captura e por ação manual no admin,
+# o que fazia `SQL_CONSUMO_APP` ser cópia byte-a-byte de `SQL_CONSUMO_PORTAL`
+# e a cascata de sinais um no-op (medido: 0 divergências em 32 leads).
+#
+# **Vai para `client_events`, não para `leads`.** `last_activity_at` é a
+# mesma coluna que o portal escreve pela ponte de formulário; gravar login
+# lá fundiria os dois sinais e a cascata voltaria a ser no-op com outros
+# nomes. Login é evento, e `client_events` (`client_id`, `event_type`,
+# `occurred_at`) existe para isso.
+EVENTO_LOGIN_APP = "portal_login"
+
+# Janela de auto-limitação, em horas. `portal/me` é chamado a **cada abertura
+# de tela**: sem isto, 200 aberturas = 200 INSERTs. Com, no máximo um evento
+# por pessoa por janela — frequência suficiente, já que o winback só olha de
+# 30 em 30 dias. Precisa ser bem menor que 30 dias: acima disso, ninguém
+# marcaria atividade a tempo de evitar a recuperação.
+MARGEM_REATIVACAO_HORAS = 12
+
+
+def _registrar_login_app(db: Session, client_id: Optional[str]) -> None:
+    """Registra que `client_id` abriu o produto agora.
+
+    Chamado por dentro do `portal/me`, **depois** da chave ser validada — só
+    uma requisição autenticada gera evento.
+
+    Três decisões que não são óbvias:
+
+    * **auto-limitado na própria SQL** (`WHERE NOT EXISTS`), e não com um
+      SELECT antes: uma instrução só, sem corrida entre requisições
+      simultâneas do mesmo cliente;
+    * **INSERT direto, sem `leads`** — quem consome API sem ser lead
+      continua sem lead;
+    * **best-effort**: o `try/except` fica **aqui**, não no call-site, para
+      que a função seja segura em qualquer ponto de chamada. Um sinal de
+      marketing não pode derrubar a tela principal do produto.
+    """
+    alvo = (client_id or "").strip()
+    if not alvo:
+        return
+    try:
+        db.execute(
+            text("""
+                INSERT INTO saas.client_events
+                    (client_id, event_type, actor, details, occurred_at)
+                SELECT :client_id, :evento, 'system', '{}'::jsonb, now()
+                 WHERE NOT EXISTS (
+                       SELECT 1 FROM saas.client_events
+                        WHERE client_id = :client_id
+                          AND event_type = :evento
+                          AND occurred_at > now()
+                              - make_interval(hours => :margem))
+            """),
+            {"client_id": alvo, "evento": EVENTO_LOGIN_APP,
+             "margem": MARGEM_REATIVACAO_HORAS},
+        )
+        # O commit é **obrigatório e mora aqui**. `get_saas_db` só faz
+        # `close()` — sem commit, a escrita é revertida no fim da requisição e
+        # o evento some silenciosamente. Foi exatamente o que aconteceu na
+        # primeira verificação: o endpoint devolvia 200, o `except` engolia o
+        # sintoma, e o sinal simplesmente não existia. Um helper de telemetria
+        # que depende de o chamador lembrar do commit não é best-effort, é
+        # sorte.
+        db.commit()
+    except Exception:                            # noqa: BLE001 — sinal é acessório
+        try:
+            db.rollback()
+        except Exception:                        # noqa: BLE001
+            pass
+
 
 def _build_sso_claims(row, jti: str, issued_at: int, expires_at: int) -> str:
     """Serializa as claims do handoff: metadados + jti + validade.
@@ -57,10 +130,12 @@ def portal_me(
                    s.current_period_start, s.current_period_end,
                    p.slug as plan_slug, p.name as plan_name,
                    p.max_requests, p.duration_days,
-                   p.price_cents, p.features::text as features
+                   p.price_cents, p.features::text as features,
+                   c.email as email
             FROM saas.api_keys k
             JOIN saas.subscriptions s ON s.id = k.subscription_id
             JOIN saas.plans p ON p.id = s.plan_id
+            JOIN saas.clients c ON c.id = k.client_id
             WHERE k.key_hash = crypt(:x_api_key, k.key_hash)
         """),
         {"x_api_key": x_api_key},
@@ -68,6 +143,11 @@ def portal_me(
 
     if not key_row:
         raise HTTPException(status_code=401, detail="API key inválida ou não encontrada")
+
+    # Sinal de login: esta é a chamada que o app faz ao abrir, com chave já
+    # validada — logo, é o marcador canônico de atividade do funil. Só depois
+    # do 401: chave inválida não ativa ninguém. Best-effort por construção.
+    _registrar_login_app(db, key_row.get("client_id"))
 
     import json
     features = key_row["features"]
