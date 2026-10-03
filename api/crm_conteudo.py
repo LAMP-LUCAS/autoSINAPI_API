@@ -386,6 +386,22 @@ SQL_CONSUMO_PORTAL = """
      WHERE lower(l.email) = lower(:email) AND l.deleted_at IS NULL
 """
 
+# Login no app — o sinal **canônico**. Login não é chamada de API: é o ato de
+# abrir o produto. Quem paga assinante e só navega (sem integrador, sem
+# script) tem `usage_logs` vazio e aparecia como inativo, o que fazia o
+# winback falar com quem estava usando.
+#
+# Fonte: `leads.last_activity_at` só é movido pela **ponte** (envio de
+# formulário pelo portal). Quando essa ponte não roda, o sinal é o mesmo do
+# portal — degradado, nunca enganoso. Por isso ele entra como sinal
+# independente e não substitui os outros: a cascata escolhe o mais recente.
+SQL_CONSUMO_APP = """
+    SELECT EXTRACT(DAY FROM (now() - GREATEST(
+             COALESCE(l.last_activity_at, l.created_at), l.created_at)))::int
+      FROM saas.leads l
+     WHERE lower(l.email) = lower(:email) AND l.deleted_at IS NULL
+"""
+
 
 def _contexto_recuperacao(db: Session, ctx: Contexto) -> ContextoRecuperacao:
     """Monta o contexto de recuperação a partir do banco.
@@ -397,6 +413,7 @@ def _contexto_recuperacao(db: Session, ctx: Contexto) -> ContextoRecuperacao:
     """
     api = db.execute(text(SQL_CONSUMO), {"email": ctx.email}).scalar()
     portal = db.execute(text(SQL_CONSUMO_PORTAL), {"email": ctx.email}).scalar()
+    app = db.execute(text(SQL_CONSUMO_APP), {"email": ctx.email}).scalar()
     promo = db.execute(text("""
         SELECT EXTRACT(DAY FROM (now() - MAX(sent_at)))::int
           FROM saas.nurture_state
@@ -415,6 +432,7 @@ def _contexto_recuperacao(db: Session, ctx: Contexto) -> ContextoRecuperacao:
         lead_id=ctx.lead_id, email=ctx.email, eh_cliente_pagante=bool(pagante),
         dias_sem_consumo_api=int(api) if api is not None else None,
         dias_sem_consumo_portal=int(portal) if portal is not None else None,
+        dias_sem_consumo_app=int(app) if app is not None else None,
         etapas_enviadas=ctx.etapas_enviadas,
         consentimento=ctx.consentimento_marketing,
         dias_sem_promocao=int(promo) if promo is not None else None,
@@ -513,8 +531,15 @@ def _reservar(db: Session, lead_id: str, chave: str, tpl: str) -> Optional[dict]
             (lead_id, step, template_id, status, claimed_at, claimed_by, attempts)
         VALUES (:lead, :step, :tpl, 'in_progress', now(), 'crm-conteudo', 1)
         ON CONFLICT (lead_id, step) DO UPDATE
-            SET status = 'in_progress', claimed_at = now(), attempts =
-                saas.nurture_state.attempts + 1, updated_at = now()
+            -- `template_id` também é atualizado, não só o status. O mapeamento
+            -- slot→template mudou (o `artigo` saiu de `66666666` para
+            -- `f4444444`), e o ON CONFLICT que não tocava nessa coluna deixava
+            -- a linha asserting que o artigo tinha sido enviado como
+            -- "boas-vindas a lead". Não afeta o envio — a OS usa o template do
+            -- `_envelope` — mas a tabela passa a mentir sobre o histórico.
+            SET status = 'in_progress', claimed_at = now(),
+                template_id = EXCLUDED.template_id,
+                attempts = saas.nurture_state.attempts + 1, updated_at = now()
          WHERE saas.nurture_state.status <> 'sent'
            AND (saas.nurture_state.claimed_at IS NULL
                 OR saas.nurture_state.claimed_at

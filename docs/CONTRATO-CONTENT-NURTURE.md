@@ -109,12 +109,15 @@ checou que `catalogo[].url == f"https://mundoaec.com/kb/{slug}/"` e
 | Promoção só para assinantes pagantes, no máximo a cada 15 dias, 2ª ou 6ª | `grade.py` |
 | Passo único — `UNIQUE (lead_id, step)` | `_reservar()` + `ON CONFLICT` |
 
-> **Limitação conhecida:** `SQL_CONSUMO_PORTAL` mede
-> `GREATEST(last_activity_at, created_at)` e o portal não envia
-> `visitor_id`/`last_activity_at` na criação do lead. O piso é o `created_at`,
-> então **ninguém alcança 45 dias** de inatividade — o degrau de 45 não é
-> inalcançável por desenho, é por falta de sinal. Verificar antes de tratar
-> isso como bug de regra.
+> **Limitação conhecida e medida (03/10):** `SQL_CONSUMO_APP` e
+> `SQL_CONSUMO_PORTAL` são **idênticas** (mesmo sha1) porque **não existe
+> evento de login** — `leads.last_activity_at` só é movido pela ponte de
+> envio de formulário e por ação manual. Nos 32 leads reais a cascata diverge
+> do `min(api, portal)` antigo em **zero** casos: é um no-op até o app emitir
+> sinal próprio.
+>
+> O degrau de 45 dias **é** alcançável — `now() - created_at` cresce todo dia.
+> Uma versão anterior deste documento afirmava o contrário; a medição refutou.
 
 ## 5. Como o contrato é detido
 
