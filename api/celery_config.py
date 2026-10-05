@@ -59,6 +59,14 @@ beat_schedule = {
         "task": "api.tasks.sync_lead_conversions",
         "schedule": crontab(minute="*/10"),
     },
+    # --- Mercado Pago: espelho + materialização do que o webhook perdeu ---
+    # A cada 15 minutos. Janela de 30 dias: cobre a recorrência (o ciclo mais
+    # curto é semanal) e mantém o custo da API previsível. Idempotente e sem
+    # escrita no MP. NUNCA reverte assinatura com `manual_override`.
+    "sync-mp-resources": {
+        "task": "api.tasks.sync_mp_resources",
+        "schedule": crontab(minute="*/15"),
+    },
 }
 
 # --- Limites de Concorrência e Sobrecarga ---

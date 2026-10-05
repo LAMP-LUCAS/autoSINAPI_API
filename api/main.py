@@ -51,6 +51,7 @@ from .legal_service import get_legal_document
 # Registro explícito: sem estes includes todas as rotas /api/v1/admin/*
 # respondem 404 e o login do SPA /admin falha (regressão 2026-09-23).
 from .admin_crm import router as admin_crm_router
+from .admin_mp import router as admin_mp_router
 from .crm_conteudo import router as crm_conteudo_router
 from .kb_admin import router as kb_admin_router
 from .public_leads import router as public_leads_router
@@ -255,6 +256,7 @@ app.include_router(public_leads_router)
 
 # ── Painel CMS/CRM (SPEC-006): CRM, mensagens (MD) e portal/assinaturas ────
 app.include_router(admin_crm_router)
+app.include_router(admin_mp_router)
 
 # Ponte do calendário: o n8n pergunta nos dias de slot, a API decide.
 # Toda a política (cadência, teto, corte de novidade) fica aqui, testável.

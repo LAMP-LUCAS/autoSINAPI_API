@@ -448,3 +448,42 @@ def generate_embeddings_task(model_slug: str = "bge_m3",
         return {"status": "success", "model": model_slug, "embedded": totals}
     finally:
         db.close()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Mercado Pago — reconciliação (Fase A do adapter do painel CMS/CRM)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@celery_app.task(acks_late=True, max_retries=1, default_retry_delay=600)
+def sync_mp_resources(days: int = 30):
+    """Lê o Mercado Pago e materializa o que o webhook perdeu.
+
+    Por que uma leitura periódica do MP quando já existe webhook: porque o
+    webhook é UM ponto único de falha, e ele já falhou (os eventos de
+    `subscription_preapproval` de 06/09 terminaram em `MP API error 404`
+    porque o código usava `GET /preapproval/{id}` em vez do documentado
+    `GET /preapproval/search`). Enquanto a assinatura só nascesse por webhook,
+    uma falha ali significava venda sem entrega — invisível no painel, porque
+    `webhook_events` registra o que fomos avisados, não o que aconteceu.
+
+    Idempotente, e **nunca reverte ajuste manual do suporte**: assinatura com
+    `manual_override` tem a divergência registrada, não corrigida.
+
+    Degrada sem derrubar o beat: MP fora do ar vira um relatório, não uma
+    exceção.
+    """
+    from .database import SaasSessionLocal
+    from . import mp_sync
+
+    db = SaasSessionLocal()
+    try:
+        summary = mp_sync.sync(db, days=days)
+        logger.info("sync_mp_resources: %s", summary)
+        return summary
+    except Exception as exc:
+        logger.error("sync_mp_resources falhou: %s", exc, exc_info=True)
+        # Não faz raise/retry: uma indisponibilidade do MP voltaria em 10 min
+        # de novo, e o beat não pode ficar preso tentando.
+        return {"erro": str(exc)}
+    finally:
+        db.close()

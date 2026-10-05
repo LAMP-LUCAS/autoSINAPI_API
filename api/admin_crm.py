@@ -503,6 +503,24 @@ def list_subscriptions(
                p.slug AS plan_slug, p.name AS plan_name, p.price_cents,
                c.id AS client_id, c.name AS client_name, c.email AS client_email,
                COALESCE(c.is_test, FALSE) AS client_is_test,
+               -- Veredito do MP, calculado AQUI para que a lista e o detalhe
+               -- nunca discordem entre si (o painel consome os dois).
+               -- `nao_verificado` é separado de `concorda` de propósito:
+               -- "não discorda" e "não sabemos" são estados diferentes, e
+               -- mostrar um como o outro faria o painel dizer "tudo certo"
+               -- quando ninguém perguntou ao Mercado Pago.
+               s.mp_preapproval_id, s.mp_payment_id,
+               s.mp_status, s.mp_synced_at, s.mp_status_differs,
+               s.manual_override, s.override_reason, s.override_by, s.override_at,
+               CASE
+                 WHEN s.mp_status IS NULL THEN 'nao_verificado'
+                 WHEN s.manual_override AND s.mp_status_differs THEN 'protegido_divergente'
+                 WHEN s.status IN ('active','authorized','approved')
+                      AND s.mp_status IN ('authorized','active') THEN 'concorda'
+                 WHEN s.status IN ('cancelled','canceled','expired')
+                      AND s.mp_status IN ('cancelled','paused') THEN 'concorda'
+                 ELSE 'divergencia'
+               END AS mp_veredito,
                (SELECT COUNT(*) FROM saas.api_keys k WHERE k.subscription_id = s.id AND k.status='active') AS active_keys,
                (SELECT COUNT(*) FROM saas.usage_logs ul
                   JOIN saas.api_keys k2 ON k2.id = ul.api_key_id
