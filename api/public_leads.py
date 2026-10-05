@@ -65,6 +65,24 @@ router = APIRouter(tags=["tier_1", "Leads"])
 # Regex deliberadamente enxuta: rejeita o óbvio, não tenta ser parser de RFC 5322.
 _EMAIL_RE = re.compile(r"^[^@\s,;<>\"]+@[^@\s,;<>\"]+\.[A-Za-z]{2,}$")
 
+# Domínios reservados (RFC 2606 / RFC 6761) nunca resolvem para um destinatário
+# real: são, por definição, sintéticos. A suíte E2E do portal usa `.invalid`
+# justamente para não entregar e-mail a ninguém — mas eles entravam no funil como
+# `is_test = false` e inflavam todo KPI (48 de 56 leads eram sintéticos, e o
+# relatório noturno mostrava "100% de conversão" que não existia).
+#
+# Marcar aqui é a regra PERMANENTE e server-side: não depende de o harness de
+# teste lembrar de marcar, e vale para qualquer futuro teste, inclusive os que
+# rodam direto contra o PostgreSQL.
+_RESERVED_EMAIL_DOMAINS = ("invalid", "test", "example", "localhost")
+
+
+def _is_synthetic_email(email: str) -> bool:
+    """True para domínios reservados (RFC 2606/6761) — nunca um humano real."""
+    domain = email.rsplit("@", 1)[-1].lower().rstrip(".")
+    tld = domain.rsplit(".", 1)[-1] if "." in domain else domain
+    return tld in _RESERVED_EMAIL_DOMAINS or domain in _RESERVED_EMAIL_DOMAINS
+
 # Atribuição de tráfego. O portal só envia estes campos com consentimento de
 # marketing (SPEC-RULE-055), então chegar aqui já significa que houve
 # consentimento — mas segue restrito a estas chaves, para que um payload
@@ -319,14 +337,21 @@ class _SqlLeadRepo:
         """), {"e": email}).mappings().first()
         return dict(row) if row else None
 
+    def mark_test(self, lead_id: str) -> None:
+        """Marca a linha como sintética (see `_is_synthetic_email`)."""
+        self._db.execute(text(
+            "UPDATE saas.leads SET is_test = TRUE WHERE id = :id"
+        ), {"id": lead_id})
+        self._db.commit()
+
     def insert(self, data: dict) -> dict:
         row = self._db.execute(text("""
             INSERT INTO saas.leads
                 (email, name, source, status, plan_slug, phone, company,
-                 persona, metadata, last_activity_at)
+                 persona, metadata, last_activity_at, is_test)
             VALUES
                 (:email, :name, :source, 'contacted', :plan_slug, :phone, :company,
-                 :persona, CAST(:metadata AS jsonb), now())
+                 :persona, CAST(:metadata AS jsonb), now(), :is_test)
             RETURNING id, email, name, status
         """), data).mappings().one()
         self._db.commit()
@@ -491,6 +516,7 @@ def create_lead(
     if payload.visitor_id:
         metadata["visitor_id"] = payload.visitor_id
 
+    is_test = _is_synthetic_email(payload.email)
     lead = store.insert({
         "email": payload.email,
         "name": payload.name,
@@ -500,10 +526,12 @@ def create_lead(
         "company": payload.company,
         "persona": payload.persona,
         "metadata": _json(metadata),
+        "is_test": is_test,
     })
     lead["_ip"] = ip
 
-    logger.info("Lead capturado id=%s source=%s ip=%s", lead["id"], payload.source, ip)
+    logger.info("Lead capturado id=%s source=%s ip=%s is_test=%s",
+                lead["id"], payload.source, ip, is_test)
     return {
         "id": str(lead["id"]),
         "status": lead.get("status", "contacted"),

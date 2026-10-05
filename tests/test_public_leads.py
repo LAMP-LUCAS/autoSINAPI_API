@@ -211,3 +211,41 @@ def test_redis_fora_do_ar_degrada_sem_500(client, fake_repo, broken_redis):
     """Redis cair não pode ser 500 (perde lead) nem aberto (perde proteção)."""
     r = client.post("/api/v1/public/leads", json=_payload())
     assert r.status_code in (201, 200, 429)
+
+# ── 9. is_test: domínio reservado é sintético por definição ────────────────────
+# Por que isto importa mais do que parece: em 2026-10-05 a auditoria do funil
+# encontrou 48 de 56 leads vindos da suíte E2E do portal (`.invalid`) marcados
+# como `is_test = false`. Como painel e relatório noturno filtram por
+# `COALESCE(is_test, FALSE) = FALSE`, o funil exibia "51 leads contacted" e uma
+# conversão de ~100% que não existia. A regra precisa ser do SERVIDOR: confiar
+# que o harness lembra de marcar é exatamente o que falhou.
+
+@pytest.mark.parametrize("email", [
+    "e2e-1@exemplo.invalid",        # suíte E2E do portal (RFC 2606)
+    "qa-dispatch@exemplo.invalid",  # QA interno
+    "alguem@dominio.test",          # RFC 2606
+    "alguem@dominio.example",       # RFC 2606
+    # `alguem@localhost` NÃO entra aqui: o regex de e-mail exige TLD e o
+    # rejeita com 422 antes de qualquer regra de is_test (comportamento correto
+    # e anterior a esta mudança — ver test_rejeita_email_sem_formato).
+    "ALGUEM@EXEMPLO.INVALID",       # normalizado antes do teste
+])
+def test_dominio_reservado_marca_is_test(client, fake_repo, email):
+    r = client.post("/api/v1/public/leads", json=_payload(email=email))
+    assert r.status_code == 201
+    assert fake_repo.created["is_test"] is True, (
+        f"{email} é domínio reservado (nunca humano) e precisa entrar como is_test"
+    )
+
+
+@pytest.mark.parametrize("email", [
+    "viviane@colinasengenharia.com",
+    "jpmabautista@gmail.com",
+    "assistentecomercial@pbg.com.br",
+])
+def test_dominio_real_nao_marca_is_test(client, fake_repo, email):
+    """O contrapeso: marcar de menos também é mentira — seria um cliente real
+    sumindo do funil por causa de uma regra de teste ampla demais."""
+    r = client.post("/api/v1/public/leads", json=_payload(email=email))
+    assert r.status_code == 201
+    assert fake_repo.created["is_test"] is False

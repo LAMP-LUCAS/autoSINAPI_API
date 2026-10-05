@@ -126,10 +126,85 @@ def test_primeira_promo_apos_o_ciclo_completo():
     assert decidir_promo(c) == "promo"
 
 
+def test_artigo_gravado_com_slug_tambem_completa_o_ciclo():
+    """O slot de artigo grava o **slug** em `step`, não `kb_NN`.
+
+    Regressão que aconteceu em produção: lead com relatório + artigo enviados,
+    e a promoção recusava com "nenhum lead elegível a promo". Dois formatos
+    convivem na `nurture_state`, porque vêm de dois códigos:
+
+    * `kb_01`, `kb_02` — o rótulo de `kb_sequence.step_para`, usado por
+      `kb_admin`;
+    * o slug cru (`analise-tendencia-preco-insumos`) — o que o slot de artigo
+      do `crm_conteudo` grava, porque `UNIQUE (lead_id, step)` é o que garante
+      "um artigo, uma vez" e o slug é o identificador estável do conteúdo.
+
+    `startswith("kb_")` enxergava só o primeiro. O teste acima passava porque
+    a fixture usava o formato bonito; este usa o formato real — o que a base
+    mostra (`SELECT DISTINCT step FROM saas.nurture_state`).
+    """
+    c = _c(dias_sem_promocao=None,
+           etapas_enviadas=("incc_leitura_mes",
+                            "analise-tendencia-preco-insumos"))
+    assert decidir_promo(c) == "promo", "artigo real não contou como ciclo"
+
+
+def test_so_artigo_sem_relatorio_nao_abre_a_promocao():
+    """Metade do ciclo não é ciclo — e o slug não pode virar 'relatório'."""
+    c = _c(dias_sem_promocao=None,
+           etapas_enviadas=("analise-tendencia-preco-insumos",))
+    assert decidir_promo(c) is None
+
+
+def test_passo_de_nurture_nao_conta_como_conteudo():
+    """`d3`/`d7` são follow-up do nurture, não relatório nem artigo.
+
+    Se fossem tratados como "não-artigo" virariam relatório por exclusão —
+    e um lead só com follow-up abriria promoção sem nunca ter recebido nada
+    da trilha.
+    """
+    assert decidir_promo(_c(dias_sem_promocao=None,
+                            etapas_enviadas=("d3",))) is None
+    assert decidir_promo(_c(dias_sem_promocao=None,
+                            etapas_enviadas=("d3", "d7"))) is None
+
+
 def test_winback_sozinho_nao_abre_a_promocao():
     """Recuperação não é conteúdo — não vale como ciclo."""
     c = _c(dias_sem_promocao=None, etapas_enviadas=("winback_30d",))
     assert decidir_promo(c) is None
+
+
+def test_winback_junto_do_relatorio_tambem_nao_e_ciclo():
+    """Recuperação + relatório não é 'relatório + artigo'.
+
+    Se o passo de recuperação fosse classificado como artigo (ele não é
+    relatório e não é nurture), este lead destravaria promoção sem jamais
+    ter recebido um artigo da KB.
+    """
+    c = _c(dias_sem_promocao=None,
+           etapas_enviadas=("incc_leitura_mes", "winback_30d"))
+    assert decidir_promo(c) is None
+
+
+def test_promo_anterior_nao_conta_como_artigo():
+    """`promo` é passo de controle, não conteúdo da trilha.
+
+    Testado em `trilha_completada` e não em `decidir_promo`: lá a guarda
+    `ja_enviou("promo")` já devolveria `None` e esconderia a classificação.
+    """
+    c = _c(etapas_enviadas=("incc_leitura_mes", "promo"))
+    assert c.trilha_completada is False, "promoção contou como artigo"
+
+
+def test_winback_nao_conta_como_artigo_na_trilha():
+    c = _c(etapas_enviadas=("incc_leitura_mes", "winback_30d"))
+    assert c.trilha_completada is False, "winback contou como artigo"
+
+
+def test_followup_de_nurture_nao_conta_como_artigo():
+    c = _c(etapas_enviadas=("incc_leitura_mes", "d3", "d7"))
+    assert c.trilha_completada is False, "follow-up contou como artigo"
 
 
 def test_promo_nao_repete_mesmo_tendo_passado_o_padrao():
